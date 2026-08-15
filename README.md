@@ -24,7 +24,8 @@ The current project is a lightweight Android and web client. It is designed for 
 | Assessment | Randomized mock exam, answer sheet, submission confirmation, result review |
 | Classification | Natural-language intent, confirmation, batching, structured validation, confidence checks, manual review |
 | Model access | User-provided OpenAI-compatible base URL, model, and API key; current DeepSeek V4 preset and legacy-name migration |
-| Platforms | Responsive web/PWA and an Android app built with Capacitor |
+| Language | Follow system, Simplified Chinese, or English; the preference is stored locally |
+| Platforms | Responsive web/PWA and two Android variants built from the same Capacitor source |
 
 Semantic duplicate detection and AI-generated adaptive review recommendations are tracked in the [roadmap](ROADMAP.md); they are not presented as completed features.
 
@@ -34,7 +35,7 @@ AI is opt-in. QuizDeck sends question content only after the user starts an AI c
 
 Using a local or intranet model can keep question-bank content and learning data inside an organization's network boundary. Actual security still depends on network design, access control, endpoint configuration, device policy, and the selected model deployment.
 
-On Android, the API key is encrypted with an Android Keystore-backed AES-GCM key. The web preview uses browser storage and is less suitable for sensitive credentials; see [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
+On Android, the API key is encrypted with an Android Keystore-backed AES-GCM key. The web preview keeps its API key only in session storage and is still less suitable for sensitive credentials; see [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 
 ## Quick start
 
@@ -61,11 +62,11 @@ Requirements: JDK 21, Android SDK 36, and Android Build Tools 35.
 pnpm run android:apk
 ```
 
-The installable debug APK is generated under `android/app/build/outputs/apk/debug/`. Public production releases should be signed with a maintainer-controlled key that is never committed. See [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md).
+The command builds Chinese-default and English-default APKs. Both variants retain the in-app language selector. Public production releases should be signed with a maintainer-controlled key that is never committed. See [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md).
 
 ## Question-bank format
 
-QuizDeck recognizes common Chinese Excel columns for number, type, prompt, answer, options, and category. English column aliases are planned for the bilingual release. Import parsing happens on the device. See [docs/QUESTION_BANK_FORMAT.md](docs/QUESTION_BANK_FORMAT.md).
+QuizDeck recognizes common Chinese and English Excel columns for number, type, prompt, answer, options, and category. Import parsing happens on the device. See [docs/QUESTION_BANK_FORMAT.md](docs/QUESTION_BANK_FORMAT.md).
 
 ## Architecture
 

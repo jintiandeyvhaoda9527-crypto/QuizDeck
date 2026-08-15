@@ -203,6 +203,173 @@ test("preserves sheet, category and question order across multiple XLSX sheets",
   assert.equal(new Set(draft.questions.map((question) => question.id)).size, 5);
 });
 
+test("parses fully synthetic English headers, types, options and judge values", async () => {
+  const file = workbookFile("Enterprise Training Bank (2).xlsx", [
+    [
+      "Compliance",
+      [
+        [
+          "Number",
+          "Type",
+          "Question",
+          "Correct Answer",
+          "Option A",
+          "Option B",
+          "Option C",
+          "Category",
+        ],
+        [
+          1,
+          "Single Choice",
+          "Which badge is required in the controlled area?",
+          "B",
+          "Visitor badge",
+          "Authorized employee badge",
+          "No badge",
+          "Access Control",
+        ],
+        [
+          2,
+          "Multiple Choice",
+          "Which actions are required before maintenance?",
+          "Correct Answer: Option A and Option C",
+          "Isolate the equipment",
+          "Skip the checklist",
+          "Verify zero energy",
+          "",
+        ],
+        [
+          3,
+          "True or False",
+          "A blocked emergency exit must be reported immediately.",
+          "True",
+          "True",
+          "False",
+          "",
+          "Emergency Response",
+        ],
+        [
+          4,
+          "Fill in the Blank",
+          "Enter the synthetic drill code.",
+          "DRILL-204",
+          "",
+          "",
+          "",
+          "",
+        ],
+      ],
+    ],
+    [
+      "Operations",
+      [
+        [
+          "No.",
+          "Type",
+          "Prompt",
+          "Answer",
+          "A Option",
+          "B Option",
+          "Section",
+        ],
+        [
+          5,
+          "True or False",
+          "A pre-shift inspection can be omitted.",
+          "No",
+          "Yes",
+          "No",
+          "Daily Operations",
+        ],
+        [
+          6,
+          "True or False",
+          "The synthetic alarm is active.",
+          "False",
+          "True",
+          "False",
+          "",
+        ],
+        [
+          7,
+          "True or False",
+          "The synthetic checklist is complete.",
+          "Yes",
+          "Yes",
+          "No",
+          "",
+        ],
+      ],
+    ],
+    [
+      "Topics",
+      [
+        [
+          "Number",
+          "Type",
+          "Question",
+          "Answer",
+          "Option A",
+          "Option B",
+          "Topic",
+        ],
+        [
+          8,
+          "Single Choice",
+          "Which team owns the synthetic procedure?",
+          "Operations",
+          "Operations",
+          "Sales",
+          "Procedure Ownership",
+        ],
+      ],
+    ],
+  ]);
+
+  const draft = await parseQuestionBankFile(file);
+
+  assert.equal(draft.suggestedName, "Enterprise Training Bank");
+  assert.deepEqual(draft.sourceSheets, [
+    "Compliance",
+    "Operations",
+    "Topics",
+  ]);
+  assert.deepEqual(
+    draft.questions.map((question) => question.type),
+    [
+      "single",
+      "multiple",
+      "judge",
+      "fill",
+      "judge",
+      "judge",
+      "judge",
+      "single",
+    ],
+  );
+  assert.deepEqual(draft.questions[1].answerKeys, ["A", "C"]);
+  assert.deepEqual(
+    draft.questions.slice(2, 7).map((question) => question.answerKeys),
+    [["A"], [], ["B"], ["B"], ["A"]],
+  );
+  assert.equal(draft.questions[3].answerText, "DRILL-204");
+  assert.deepEqual(
+    draft.categories.map((category) => category.name),
+    [
+      "Access Control",
+      "Emergency Response",
+      "Daily Operations",
+      "Procedure Ownership",
+    ],
+  );
+  assert.deepEqual(
+    draft.categories.map((category) => category.questionIds.length),
+    [2, 2, 3, 1],
+  );
+  assert.equal(draft.importIssues.length, 0);
+  assert.ok(draft.questions.every((question) => question.gradable));
+});
+
 test("keeps answer anomalies as ungradable questions and reports malformed rows", async () => {
   const file = workbookFile("异常题库.xlsx", [
     [

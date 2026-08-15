@@ -15,11 +15,14 @@ pnpm install --frozen-lockfile
 pnpm run android:apk
 ```
 
-The debug APK is created at:
+Two debug APKs are created from the same source. The Chinese-default variant keeps the base application ID for upgrades from v0.1; the English-default variant uses an `.en` suffix. Both retain the in-app language selector:
 
 ```text
-android/app/build/outputs/apk/debug/app-debug.apk
+android/app/build/outputs/apk/zh/debug/app-zh-debug.apk
+android/app/build/outputs/apk/en/debug/app-en-debug.apk
 ```
+
+Use `pnpm run android:apk:zh` or `pnpm run android:apk:en` to build only one variant.
 
 Debug APKs are suitable for local testing. They should not be presented as production-signed releases.
 

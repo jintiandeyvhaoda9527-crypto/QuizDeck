@@ -49,6 +49,7 @@ const TYPE_HEADERS = new Set([
   "类型",
   "题目类型",
   "试题类型",
+  "type",
 ]);
 
 const STEM_HEADERS = new Set([
@@ -58,6 +59,8 @@ const STEM_HEADERS = new Set([
   "问题",
   "题目内容",
   "试题内容",
+  "question",
+  "prompt",
 ]);
 
 const ANSWER_HEADERS = new Set([
@@ -65,6 +68,8 @@ const ANSWER_HEADERS = new Set([
   "正确答案",
   "标准答案",
   "参考答案",
+  "answer",
+  "correctanswer",
 ]);
 
 const CATEGORY_HEADERS = new Set([
@@ -78,6 +83,9 @@ const CATEGORY_HEADERS = new Set([
   "所属分类",
   "所属章节",
   "知识点",
+  "category",
+  "section",
+  "topic",
 ]);
 
 const POSITIVE_JUDGE_VALUES = new Set([
@@ -122,7 +130,8 @@ function normalizedCategoryKey(value: string): string {
 
 function optionKeyFromHeader(value: unknown): string | null {
   const header = normalizedHeader(value).toUpperCase();
-  const match = /^(?:选项)?([A-Z])(?:选项|项|内容)?$/.exec(header);
+  const match =
+    /^(?:选项|OPTION)?([A-Z])(?:选项|项|内容|OPTION)?$/.exec(header);
   return match?.[1] ?? null;
 }
 
@@ -234,7 +243,7 @@ function scanSheet(
 function questionTypeFromSource(value: string): QuestionType | null {
   const normalized = value
     .normalize("NFKC")
-    .replace(/\s+/g, "")
+    .replace(/[\s/_\-]+/g, "")
     .toLocaleLowerCase("zh-CN");
 
   if (/单选|单项选择|single/.test(normalized)) {
@@ -243,7 +252,7 @@ function questionTypeFromSource(value: string): QuestionType | null {
   if (/多选|多项选择|不定项|multiple/.test(normalized)) {
     return "multiple";
   }
-  if (/判断|是非|对错|judge|truefalse/.test(normalized)) {
+  if (/判断|是非|对错|judge|true(?:or)?false/.test(normalized)) {
     return "judge";
   }
   if (/填空|简答|问答|fill/.test(normalized)) {
@@ -277,7 +286,12 @@ function parseLetterAnswer(value: string): string[] | null {
     .normalize("NFKC")
     .toUpperCase()
     .replace(/(?:正确答案|标准答案|参考答案|答案)/g, "")
-    .replace(/[选项\s,，、;；:：/|+＋和与及或.。()（）[\]【】]/g, "");
+    .replace(
+      /\b(?:CORRECT\s*ANSWER|STANDARD\s*ANSWER|REFERENCE\s*ANSWER|ANSWER|OPTION)\b/g,
+      "",
+    )
+    .replace(/\b(?:AND|OR)\b/g, "")
+    .replace(/[选项\s,，、;；:：/|&+＋和与及或.。()（）[\]【】]/g, "");
 
   if (!compact || !/^[A-Z]+$/.test(compact)) {
     return null;
@@ -291,8 +305,24 @@ function parseChoiceAnswer(
   options: Question["options"],
   type: QuestionType,
 ): string[] | null {
+  if (type === "judge") {
+    const answerPolarity = judgePolarity(rawAnswer);
+    if (answerPolarity !== null) {
+      const matchingOption = options.find(
+        (option) => judgePolarity(option.text) === answerPolarity,
+      );
+      if (matchingOption) {
+        return [matchingOption.id];
+      }
+    }
+  }
+
   const letterAnswer = parseLetterAnswer(rawAnswer);
-  if (letterAnswer) {
+  const optionIds = new Set(options.map((option) => option.id));
+  if (
+    letterAnswer &&
+    letterAnswer.every((optionId) => optionIds.has(optionId))
+  ) {
     return letterAnswer;
   }
 
@@ -309,16 +339,10 @@ function parseChoiceAnswer(
     return [exactOption.id];
   }
 
-  if (type === "judge") {
-    const answerPolarity = judgePolarity(rawAnswer);
-    if (answerPolarity !== null) {
-      const matchingOption = options.find(
-        (option) => judgePolarity(option.text) === answerPolarity,
-      );
-      if (matchingOption) {
-        return [matchingOption.id];
-      }
-    }
+  // Preserve invalid letter answers so the caller can report the exact
+  // out-of-range option IDs instead of a generic unrecognized-answer error.
+  if (letterAnswer) {
+    return letterAnswer;
   }
 
   return null;

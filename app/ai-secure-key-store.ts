@@ -57,6 +57,8 @@ export function createNativeApiKeyStore(
 }
 
 export function createPlatformAiApiKeyStore(): AiApiKeyStore {
+  // Server rendering has no browser storage, Android uses the system
+  // keystore, and the web preview limits its key to sessionStorage.
   if (typeof globalThis.window === "undefined") {
     return createMemoryApiKeyStore();
   }

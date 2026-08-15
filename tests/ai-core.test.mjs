@@ -30,6 +30,7 @@ import {
   summarizePartitionIntent,
   testAiConnection,
 } from "../app/ai-core.ts";
+import { getCoreErrorMessage } from "../app/i18n/core-messages.ts";
 
 function createStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -202,6 +203,75 @@ test("普通设置与 API Key 分开保存，网页降级存储明确标记为�
     timeoutMs: 60_000,
     apiKey: "secret-key-value",
   });
+});
+
+test("网页预览默认仅把 API Key 存入 sessionStorage", async (t) => {
+  const sessionStorage = createStorage();
+  const settingsStorage = createStorage({
+    [AI_WEB_PREVIEW_KEY_STORAGE_KEY]: "legacy-persistent-secret",
+  });
+  const previousDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "sessionStorage",
+  );
+  const previousLocalDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "localStorage",
+  );
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: sessionStorage,
+  });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: settingsStorage,
+  });
+  t.after(() => {
+    if (previousDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        "sessionStorage",
+        previousDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(globalThis, "sessionStorage");
+    }
+    if (previousLocalDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        "localStorage",
+        previousLocalDescriptor,
+      );
+    } else {
+      Reflect.deleteProperty(globalThis, "localStorage");
+    }
+  });
+
+  const keyStore = createWebPreviewApiKeyStore();
+  assert.equal(
+    settingsStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    undefined,
+  );
+  await saveAiConfiguration(
+    {
+      apiBaseUrl: "https://api.example.com/v1",
+      model: "compatible-model",
+      apiKey: "session-only-secret",
+    },
+    keyStore,
+    settingsStorage,
+  );
+
+  assert.equal(
+    sessionStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    "session-only-secret",
+  );
+  assert.equal(
+    JSON.stringify(settingsStorage.snapshot()).includes(
+      "session-only-secret",
+    ),
+    false,
+  );
 });
 
 test("可注入安全 KeyStore，普通设置读取不到密钥", async () => {
@@ -433,6 +503,29 @@ test("客户端不会把 Key 或服务端错误正文带入异常", async () => 
       error.code === "network" &&
       !error.message.includes(apiKey),
   );
+});
+
+test("核心错误可按 code 映射为中英安全消息且不回显原始正文", () => {
+  const rawSecret = "provider-body-with-secret-key";
+  const error = new AiClientError(
+    "authentication",
+    rawSecret,
+    401,
+  );
+
+  assert.equal(
+    getCoreErrorMessage("zh-CN", error),
+    "API Key 无效，或无权访问所选模型。",
+  );
+  assert.equal(
+    getCoreErrorMessage("en-US", error),
+    "The API key is invalid or cannot access the selected model.",
+  );
+  assert.equal(
+    getCoreErrorMessage("en-US", error)?.includes(rawSecret),
+    false,
+  );
+  assert.equal(getCoreErrorMessage("en-US", new Error(rawSecret)), null);
 });
 
 test("DeepSeek 资源中断与常见 HTTP 状态给出可行动错误", async () => {
@@ -685,6 +778,91 @@ test("摘要阶段不发送全题内容，只发送当前题库概况", () => {
     questionCount: 2,
   });
   assert.equal(messages[1].content.includes(bank.questions[0].stem), false);
+});
+
+test("English locale explicitly requests English values while keeping fixed JSON fields", () => {
+  const bank = createBank(1);
+  const summaryMessages = buildIntentSummaryMessages(
+    bank,
+    "Find questions about emergency procedures",
+    "en-US",
+  );
+  const confirmation = {
+    bankId: bank.id,
+    intent: "Find questions about emergency procedures",
+    summary: "Find emergency procedure questions",
+    suggestedPartitionName: "Emergency Procedures",
+  };
+  const selectionMessages = buildPartitionSelectionMessages(
+    bank,
+    confirmation,
+    "en-US",
+  );
+
+  assert.match(summaryMessages[0].content, /in English/iu);
+  assert.match(
+    summaryMessages[0].content,
+    /"summary":"\.\.\.","suggestedPartitionName":"\.\.\."/u,
+  );
+  assert.match(selectionMessages[0].content, /in English/iu);
+  assert.match(
+    selectionMessages[0].content,
+    /"name":"candidate partition name","questionIds":\["question ID"\],"reason":"selection reason","confidence":0\.0/u,
+  );
+  assert.match(selectionMessages[0].content, /untrusted data/iu);
+  assert.equal(JSON.parse(summaryMessages[1].content).userIntent, confirmation.intent);
+  assert.deepEqual(
+    Object.keys(JSON.parse(selectionMessages[1].content).confirmedRequest),
+    ["originalIntent", "summary", "suggestedPartitionName"],
+  );
+});
+
+test("English locale and cancellation signal flow through both AI stages", async () => {
+  const bank = createBank(1);
+  const controller = new AbortController();
+  const calls = [];
+  const client = {
+    async complete(messages, options) {
+      calls.push({ messages, options });
+      if (calls.length === 1) {
+        return '{"summary":"Find safety questions","suggestedPartitionName":"Safety"}';
+      }
+      return '{"name":"Safety","questionIds":["bank-current:q-1"],"reason":"The question matches.","confidence":0.9}';
+    },
+  };
+
+  const summary = await summarizePartitionIntent(
+    client,
+    bank,
+    "Find safety questions",
+    { locale: "en-US", signal: controller.signal },
+  );
+  const candidate = await generatePartitionCandidate(
+    client,
+    bank,
+    summary,
+    { locale: "en-US", signal: controller.signal },
+  );
+
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(({ messages }) => /in English/iu.test(messages[0].content)));
+  assert.ok(calls.every(({ options }) => options.signal === controller.signal));
+  assert.match(candidate.reason, /^Checked all 1 questions and matched 1\. /u);
+
+  controller.abort();
+  await assert.rejects(
+    summarizePartitionIntent(
+      client,
+      bank,
+      "Find safety questions",
+      { locale: "en-US", signal: controller.signal },
+    ),
+    (error) =>
+      error instanceof AiClientError &&
+      error.code === "cancelled" &&
+      /cancelled/iu.test(error.message) &&
+      !/网络|超时/u.test(error.message),
+  );
 });
 
 test("两阶段工作流先确认意愿，再筛选，并且不修改题库", async () => {

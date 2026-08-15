@@ -24,7 +24,8 @@ QuizDeck 是一款 AI 辅助、隐私优先的企业员工培训与资格考试�
 | 考试 | 随机模拟考试、答题卡、交卷确认、结果复核 |
 | AI 分类 | 意愿整理、确认、分批筛选、结构校验、置信度校验、人工复核 |
 | 模型配置 | 自行填写 OpenAI 兼容地址、模型和 API Key；适配当前 DeepSeek V4 并迁移旧模型名 |
-| 平台 | 响应式 Web/PWA 与 Capacitor Android 应用 |
+| 语言 | 跟随系统、简体中文或 English，选择结果保存在本机 |
+| 平台 | 响应式 Web/PWA，以及由同一份 Capacitor 源码构建的两种 Android 版本 |
 
 语义重复题识别和基于错题的 AI 自适应推荐已列入[路线图](ROADMAP.md)，目前不会宣传为已完成功能。
 
@@ -34,7 +35,7 @@ AI 为可选能力。只有用户主动开始 AI 分类并确认系统整理的�
 
 通过本地或内网模型部署，企业可以让题库内容和学习数据保留在自身网络边界内。实际安全性仍取决于网络设计、访问权限、接口配置、设备策略和模型部署方式。
 
-Android 端使用 Android Keystore 支持的 AES-GCM 密钥加密 API Key。Web 预览使用浏览器存储，不适合保存高敏感凭据；详见 [PRIVACY.md](PRIVACY.md) 和 [SECURITY.md](SECURITY.md)。
+Android 端使用 Android Keystore 支持的 AES-GCM 密钥加密 API Key。Web 预览只在当前会话存储 API Key，仍不适合保存高敏感凭据；详见 [PRIVACY.md](PRIVACY.md) 和 [SECURITY.md](SECURITY.md)。
 
 ## 本地运行
 
@@ -56,7 +57,7 @@ pnpm run verify
 pnpm run android:apk
 ```
 
-可安装的调试 APK 位于 `android/app/build/outputs/apk/debug/`。公开正式版应使用维护者自行保管的签名密钥，签名材料不能提交到仓库。详见 [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md)。
+该命令会构建中文默认版和英文默认版，两种版本都保留应用内语言切换。公开正式版应使用维护者自行保管的签名密钥，签名材料不能提交到仓库。详见 [docs/ANDROID_RELEASE.md](docs/ANDROID_RELEASE.md)。
 
 ## 题库格式与架构
 

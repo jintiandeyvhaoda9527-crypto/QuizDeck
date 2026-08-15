@@ -1,6 +1,6 @@
 {
   "name": "quizdeck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Offline-first quiz practice with reviewed AI-assisted question classification.",
   "license": "MIT",
@@ -22,7 +22,9 @@
     "clean:android-assets": "node ./scripts/clean-mobile-assets.mjs android-assets",
     "build:mobile": "pnpm run clean:mobile-output && vite build --config vite.mobile.config.ts",
     "android:sync": "pnpm run build:mobile && pnpm run clean:android-assets && cap sync android",
-    "android:apk": "pnpm run android:sync && cd android && gradlew.bat :app:assembleDebug",
+    "android:apk": "pnpm run android:sync && cd android && gradlew.bat :app:assembleZhDebug :app:assembleEnDebug",
+    "android:apk:zh": "pnpm run android:sync && cd android && gradlew.bat :app:assembleZhDebug",
+    "android:apk:en": "pnpm run android:sync && cd android && gradlew.bat :app:assembleEnDebug",
     "start": "node ./node_modules/vinext/dist/cli.js start",
     "test": "pnpm run build && node ./node_modules/tsx/dist/cli.mjs --test tests/*.test.mjs",
     "lint": "eslint . --max-warnings=0",

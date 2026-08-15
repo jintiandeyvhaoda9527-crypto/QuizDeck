@@ -11,6 +11,7 @@ import {
   DEEPSEEK_DEFAULT_MODEL,
   DEEPSEEK_PRO_MODEL,
 } from "./ai-config";
+import { useI18n } from "./i18n";
 
 export interface SessionSummary {
   answered: number;
@@ -220,6 +221,8 @@ export interface AiPartitionIntentScreenProps {
   bankName: string;
   initialIntent?: string;
   isConfigured: boolean;
+  isBusy?: boolean;
+  errorMessage?: string;
   onBack: () => void;
   onOpenSettings: () => void;
   onContinue: (intent: string) => void;
@@ -229,6 +232,8 @@ export interface AiPartitionConfirmScreenProps {
   bankName: string;
   questionCount: number;
   intent: string;
+  summary?: string;
+  suggestedPartitionName?: string;
   onBack: () => void;
   onStart: () => void;
 }
@@ -253,6 +258,14 @@ export interface AiPartitionReviewScreenProps {
   onSave: (name: string, selectedQuestionIds: string[]) => void;
 }
 
+type Translate = ReturnType<typeof useI18n>["t"];
+type CountKind = "bank" | "category" | "partition" | "question" | "issue";
+
+function countLabel(t: Translate, kind: CountKind, count: number) {
+  const plurality = count === 1 ? "one" : "other";
+  return t(`library.count.${kind}.${plurality}`, { count });
+}
+
 function BottomNavigation({
   active,
   onLibrary,
@@ -262,8 +275,13 @@ function BottomNavigation({
   onLibrary: () => void;
   onSettings: () => void;
 }) {
+  const { t } = useI18n();
+
   return (
-    <nav className="library-bottom-nav" aria-label="主导航">
+    <nav
+      className="library-bottom-nav"
+      aria-label={t("library.navigation.label")}
+    >
       <div className="library-bottom-nav-inner">
         <button
           type="button"
@@ -272,7 +290,7 @@ function BottomNavigation({
           onClick={onLibrary}
         >
           <span className="nav-dot" aria-hidden="true" />
-          题库
+          {t("library.navigation.library")}
         </button>
         <button
           type="button"
@@ -281,7 +299,7 @@ function BottomNavigation({
           onClick={onSettings}
         >
           <span className="nav-dot" aria-hidden="true" />
-          设置
+          {t("library.navigation.settings")}
         </button>
       </div>
     </nav>
@@ -289,13 +307,14 @@ function BottomNavigation({
 }
 
 function ProgressBar({ value }: { value: number }) {
+  const { t } = useI18n();
   const progress = Math.min(100, Math.max(0, value));
 
   return (
     <div
       className="bank-progress-track"
       role="progressbar"
-      aria-label="练习进度"
+      aria-label={t("library.progress.label")}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={progress}
@@ -346,12 +365,16 @@ function PartitionQuestionChecklist({
   selectedQuestionIds: Set<string>;
   onToggle: (questionId: string) => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <div className="partition-question-list">
       {questions.map((question) => {
         const checked = selectedQuestionIds.has(question.id);
         const metadata = [
-          question.number ? `原题第 ${question.number} 题` : "",
+          question.number
+            ? t("library.question.original", { number: question.number })
+            : "",
           question.typeLabel ?? "",
         ].filter(Boolean).join(" · ");
 
@@ -383,6 +406,7 @@ export function LibraryHome({
   onImportFile,
   onOpenSettings,
 }: LibraryHomeProps) {
+  const { t } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -398,7 +422,7 @@ export function LibraryHome({
       <div className="library-page">
         <header className="library-header">
           <div>
-            <p className="page-kicker">离线优先 · 企业学习</p>
+            <p className="page-kicker">{t("library.home.kicker")}</p>
             <h1>QuizDeck</h1>
           </div>
           <button
@@ -407,7 +431,7 @@ export function LibraryHome({
             onClick={() => fileInputRef.current?.click()}
             data-testid="import-bank"
           >
-            导入
+            {t("library.home.import")}
           </button>
           <input
             ref={fileInputRef}
@@ -421,8 +445,8 @@ export function LibraryHome({
 
         <section className="library-section" aria-labelledby="bank-list-title">
           <div className="section-heading">
-            <h2 id="bank-list-title">全部题库</h2>
-            <span>{banks.length} 个</span>
+            <h2 id="bank-list-title">{t("library.home.allBanks")}</h2>
+            <span>{countLabel(t, "bank", banks.length)}</span>
           </div>
 
           {banks.length > 0 ? (
@@ -431,9 +455,9 @@ export function LibraryHome({
                 const progress = bank.session?.percentage ?? 0;
                 const primaryLabel = bank.session
                   ? bank.session.submitted
-                    ? "查看上次结果"
-                    : "继续练习"
-                  : "开始练习";
+                    ? t("library.home.viewLastResult")
+                    : t("library.home.continuePractice")
+                  : t("library.home.startPractice");
 
                 return (
                   <article className="library-bank-card" key={bank.id}>
@@ -451,7 +475,14 @@ export function LibraryHome({
                       <span className="bank-card-copy">
                         <strong>{bank.name}</strong>
                         <span>
-                          {bank.questionCount} 题 · {bank.gradableCount} 题可计分
+                          {t("library.home.bankMeta", {
+                            questions: countLabel(
+                              t,
+                              "question",
+                              bank.questionCount,
+                            ),
+                            gradable: bank.gradableCount,
+                          })}
                         </span>
                       </span>
                       <span className="chevron" aria-hidden="true">›</span>
@@ -460,8 +491,11 @@ export function LibraryHome({
                     <div className="bank-progress-copy">
                       <span>
                         {bank.session
-                          ? `已答 ${bank.session.answered} / ${bank.session.total}`
-                          : "尚未开始"}
+                          ? t("library.home.answered", {
+                              answered: bank.session.answered,
+                              total: bank.session.total,
+                            })
+                          : t("library.home.notStarted")}
                       </span>
                       <strong>{progress}%</strong>
                     </div>
@@ -481,8 +515,8 @@ export function LibraryHome({
             </div>
           ) : (
             <div className="library-empty-card">
-              <strong>暂无题库</strong>
-              <span>点击右上角“导入”选择题库文件。</span>
+              <strong>{t("library.home.emptyTitle")}</strong>
+              <span>{t("library.home.emptyDescription")}</span>
             </div>
           )}
         </section>
@@ -522,6 +556,7 @@ export function BankDetail({
   onRenameBank,
   onDeleteBank,
 }: BankDetailProps) {
+  const { t } = useI18n();
   const progress = session?.percentage ?? 0;
 
   return (
@@ -530,26 +565,30 @@ export function BankDetail({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>题库详情</h1>
+          <h1>{t("library.detail.title")}</h1>
           <button
             type="button"
             className="detail-settings-action"
             onClick={onOpenSettings}
           >
-            设置
+            {t("library.common.settings")}
           </button>
         </header>
 
         <section className="bank-overview">
           <h2>{bankName}</h2>
           <p>
-            {questionCount} 题
-            {session ? ` · 已答 ${session.answered} 题` : ""}
+            {session
+              ? t("library.detail.overviewAnswered", {
+                  questions: countLabel(t, "question", questionCount),
+                  answered: session.answered,
+                })
+              : countLabel(t, "question", questionCount)}
           </p>
           <div className="overview-progress-copy">
-            <span>练习进度</span>
+            <span>{t("library.progress.label")}</span>
             <strong>{progress}%</strong>
           </div>
           <ProgressBar value={progress} />
@@ -561,14 +600,16 @@ export function BankDetail({
               onClick={onResume}
               data-testid="resume-attempt"
             >
-              {session.submitted ? "查看上次结果" : "继续练习"}
+              {session.submitted
+                ? t("library.home.viewLastResult")
+                : t("library.home.continuePractice")}
             </button>
           ) : null}
         </section>
 
         <section className="mode-section" aria-labelledby="mode-title">
           <div className="section-heading">
-            <h2 id="mode-title">练习方式</h2>
+            <h2 id="mode-title">{t("library.modes.title")}</h2>
           </div>
 
           <button
@@ -577,10 +618,12 @@ export function BankDetail({
             onClick={onStartSequential}
             data-testid="start-sequential"
           >
-            <span className="mode-symbol" aria-hidden="true">序</span>
+            <span className="mode-symbol" aria-hidden="true">
+              {t("library.modes.sequentialSymbol")}
+            </span>
             <span>
-              <strong>顺序练习</strong>
-              <small>按原题与原选项顺序练习</small>
+              <strong>{t("library.modes.sequential")}</strong>
+              <small>{t("library.modes.sequentialDescription")}</small>
             </span>
             <span className="chevron" aria-hidden="true">›</span>
           </button>
@@ -592,10 +635,12 @@ export function BankDetail({
               onClick={onStartRandom}
               data-testid="start-practice"
             >
-              <span className="secondary-mode-symbol" aria-hidden="true">随</span>
+              <span className="secondary-mode-symbol" aria-hidden="true">
+                {t("library.modes.randomSymbol")}
+              </span>
               <span>
-                <strong>随机练习</strong>
-                <small>题目和选项重新排序</small>
+                <strong>{t("library.modes.random")}</strong>
+                <small>{t("library.modes.randomDescription")}</small>
               </span>
             </button>
             <button
@@ -604,10 +649,12 @@ export function BankDetail({
               onClick={onStartExam}
               data-testid="start-exam"
             >
-              <span className="secondary-mode-symbol" aria-hidden="true">考</span>
+              <span className="secondary-mode-symbol" aria-hidden="true">
+                {t("library.modes.examSymbol")}
+              </span>
               <span>
-                <strong>模拟考试</strong>
-                <small>交卷后统一查看答案</small>
+                <strong>{t("library.modes.exam")}</strong>
+                <small>{t("library.modes.examDescription")}</small>
               </span>
             </button>
           </div>
@@ -615,42 +662,50 @@ export function BankDetail({
 
         <section className="scope-section" aria-labelledby="scope-title">
           <div className="section-heading">
-            <h2 id="scope-title">题目范围</h2>
+            <h2 id="scope-title">{t("library.scope.title")}</h2>
           </div>
           <div className="scope-card scope-list-card">
             <ScopeRow
-              symbol="全"
-              title="全部题目"
-              detail={`${questionCount} 题 · ${gradableCount} 题可计分`}
+              symbol={t("library.scope.allSymbol")}
+              title={t("library.scope.all")}
+              detail={t("library.scope.allDetail", {
+                questions: countLabel(t, "question", questionCount),
+                gradable: gradableCount,
+              })}
               onClick={onOpenAllQuestions}
             />
-            <div className="type-counts scope-type-counts" aria-label="题型统计">
-              <span>单选 {typeCounts.single}</span>
-              <span>多选 {typeCounts.multiple}</span>
-              <span>判断 {typeCounts.judge}</span>
-              <span>填空 {typeCounts.fill}</span>
+            <div
+              className="type-counts scope-type-counts"
+              aria-label={t("library.scope.typeStats")}
+            >
+              <span>{t("library.scope.single", { count: typeCounts.single })}</span>
+              <span>{t("library.scope.multiple", { count: typeCounts.multiple })}</span>
+              <span>{t("library.scope.judge", { count: typeCounts.judge })}</span>
+              <span>{t("library.scope.fill", { count: typeCounts.fill })}</span>
             </div>
             <ScopeRow
-              symbol="文"
-              title="文件分类"
+              symbol={t("library.scope.categorySymbol")}
+              title={t("library.scope.categories")}
               detail={categoryCount > 0
-                ? `${categoryCount} 个分类`
-                : "原文件未包含分类"}
+                ? countLabel(t, "category", categoryCount)
+                : t("library.scope.noCategories")}
               disabled={categoryCount === 0}
               onClick={onOpenCategories}
             />
             <ScopeRow
-              symbol="区"
-              title="自建分区"
+              symbol={t("library.scope.partitionSymbol")}
+              title={t("library.scope.partitions")}
               detail={partitionCount > 0
-                ? `${partitionCount} 个分区`
-                : "暂无分区，点击新建"}
+                ? countLabel(t, "partition", partitionCount)
+                : t("library.scope.noPartitions")}
               onClick={onOpenPartitions}
             />
             <ScopeRow
-              symbol="错"
-              title="错题专项"
-              detail={wrongCount > 0 ? `${wrongCount} 题` : "暂无错题"}
+              symbol={t("library.scope.wrongSymbol")}
+              title={t("library.scope.wrong")}
+              detail={wrongCount > 0
+                ? countLabel(t, "question", wrongCount)
+                : t("library.scope.noWrong")}
               disabled={wrongCount === 0}
               onClick={onOpenWrongQuestions}
             />
@@ -658,7 +713,7 @@ export function BankDetail({
         </section>
 
         <p className="bank-note">
-          源文件无解析；缺少对应选项的题目保留原题但不计分。
+          {t("library.detail.sourceNote")}
         </p>
 
         {isImported || onDeleteBank ? (
@@ -667,8 +722,8 @@ export function BankDetail({
             aria-labelledby="bank-management-title"
           >
             <div className="section-heading">
-              <h2 id="bank-management-title">题库管理</h2>
-              <span>低频操作</span>
+              <h2 id="bank-management-title">{t("library.management.title")}</h2>
+              <span>{t("library.management.kicker")}</span>
             </div>
             <div className="settings-card settings-link-card">
               {onOpenImportIssues ? (
@@ -678,11 +733,13 @@ export function BankDetail({
                   onClick={onOpenImportIssues}
                 >
                   <span className="setting-copy">
-                    <strong>导入问题详情</strong>
+                    <strong>{t("library.management.importIssues")}</strong>
                     <span>
                       {importIssueCount > 0
-                        ? `${importIssueCount} 项需要核对`
-                        : "未发现结构异常"}
+                        ? t("library.management.issuesToReview", {
+                            count: importIssueCount,
+                          })
+                        : t("library.management.noStructuralIssues")}
                     </span>
                   </span>
                   <span className="chevron" aria-hidden="true">›</span>
@@ -695,8 +752,8 @@ export function BankDetail({
                   onClick={onRenameBank}
                 >
                   <span className="setting-copy">
-                    <strong>重命名题库</strong>
-                    <span>仅修改本机显示名称</span>
+                    <strong>{t("library.management.rename")}</strong>
+                    <span>{t("library.management.renameDescription")}</span>
                   </span>
                   <span className="chevron" aria-hidden="true">›</span>
                 </button>
@@ -708,8 +765,8 @@ export function BankDetail({
                   onClick={onDeleteBank}
                 >
                   <span className="setting-copy">
-                    <strong>删除题库</strong>
-                    <span>同时移除本机进度、错题和自建分区</span>
+                    <strong>{t("library.management.delete")}</strong>
+                    <span>{t("library.management.deleteDescription")}</span>
                   </span>
                   <span className="chevron" aria-hidden="true">›</span>
                 </button>
@@ -733,6 +790,7 @@ export function ImportResultSheet({
   onSave,
   onCancel,
 }: ImportResultSheetProps) {
+  const { t } = useI18n();
   const inputId = useId();
   const [name, setName] = useState(initialName);
   const normalizedName = name.trim();
@@ -746,18 +804,20 @@ export function ImportResultSheet({
         aria-labelledby="import-result-title"
       >
         <header className="sheet-header">
-          <h2 id="import-result-title">导入结果</h2>
+          <h2 id="import-result-title">{t("library.import.title")}</h2>
           <button
             type="button"
             className="sheet-close"
-            aria-label="取消导入"
+            aria-label={t("library.import.cancelAria")}
             onClick={onCancel}
           >
             ×
           </button>
         </header>
         <div className="sheet-body">
-          <label className="field-label" htmlFor={inputId}>题库名称</label>
+          <label className="field-label" htmlFor={inputId}>
+            {t("library.import.bankName")}
+          </label>
           <input
             id={inputId}
             className="text-field"
@@ -766,21 +826,26 @@ export function ImportResultSheet({
             autoComplete="off"
           />
 
-          <div className="import-summary" aria-label="导入摘要">
+          <div
+            className="import-summary"
+            aria-label={t("library.import.summaryAria")}
+          >
             <div>
-              <span>题目</span>
-              <strong>{questionCount} 题</strong>
+              <span>{t("library.import.questions")}</span>
+              <strong>{countLabel(t, "question", questionCount)}</strong>
             </div>
             <div>
-              <span>文件分类</span>
+              <span>{t("library.import.categories")}</span>
               <strong>
-                {categoryCount > 0 ? `${categoryCount} 个` : "未包含"}
+                {categoryCount > 0
+                  ? countLabel(t, "category", categoryCount)
+                  : t("library.import.notIncluded")}
               </strong>
             </div>
             <div>
-              <span>结构异常</span>
+              <span>{t("library.import.structuralIssues")}</span>
               <strong className={issueCount > 0 ? "has-issues" : ""}>
-                {issueCount} 项
+                {countLabel(t, "issue", issueCount)}
               </strong>
             </div>
           </div>
@@ -788,18 +853,20 @@ export function ImportResultSheet({
           <p className="import-issue-summary">
             {issueSummary
               ?? (issueCount > 0
-                ? `发现 ${issueCount} 项结构异常，请在进入题库后核对。`
-                : "未发现结构异常。")}
+                ? t("library.import.issueSummary", { count: issueCount })
+                : t("library.import.noIssueSummary"))}
           </p>
 
           {duplicateBankName || duplicateWarning ? (
             <div className="duplicate-import-warning" role="status">
               <span aria-hidden="true">!</span>
               <div>
-                <strong>可能重复导入</strong>
+                <strong>{t("library.import.possibleDuplicate")}</strong>
                 <p>
                   {duplicateWarning
-                    ?? `已存在题库“${duplicateBankName}”。你仍可继续保存为独立题库。`}
+                    ?? t("library.import.duplicateWarning", {
+                      name: duplicateBankName ?? "",
+                    })}
                 </p>
               </div>
             </div>
@@ -811,7 +878,7 @@ export function ImportResultSheet({
             className="secondary-button"
             onClick={onCancel}
           >
-            取消
+            {t("library.common.cancel")}
           </button>
           <button
             type="button"
@@ -819,7 +886,7 @@ export function ImportResultSheet({
             disabled={!normalizedName}
             onClick={() => onSave(normalizedName)}
           >
-            保存并进入
+            {t("library.import.saveAndOpen")}
           </button>
         </footer>
       </section>
@@ -833,6 +900,7 @@ export function ImportIssueDetailsScreen({
   issues,
   onBack,
 }: ImportIssueDetailsScreenProps) {
+  const { t } = useI18n();
   const errorCount = issues.filter((issue) => issue.severity === "error").length;
 
   return (
@@ -841,18 +909,18 @@ export function ImportIssueDetailsScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>导入问题详情</h1>
+          <h1>{t("library.importIssues.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="bank-overview import-issue-overview">
-          <h2>{issues.length} 项</h2>
+          <h2>{countLabel(t, "issue", issues.length)}</h2>
           <p>
             {errorCount > 0
-              ? `${errorCount} 项会影响计分，其余题目仍可正常使用。`
-              : "这些提示不影响其余题目正常使用。"}
+              ? t("library.importIssues.affectsGrading", { count: errorCount })
+              : t("library.importIssues.nonBlocking")}
           </p>
         </section>
 
@@ -862,7 +930,7 @@ export function ImportIssueDetailsScreen({
         >
           <div className="section-heading">
             <h2 id="import-issue-list-title">{bankName}</h2>
-            <span>{sourceFileName ?? "导入题库"}</span>
+            <span>{sourceFileName ?? t("library.importIssues.importedBank")}</span>
           </div>
           {issues.length > 0 ? (
             <div className="import-issue-list">
@@ -877,8 +945,10 @@ export function ImportIssueDetailsScreen({
                   <div>
                     <small>
                       {issue.questionNumber
-                        ? `原题第 ${issue.questionNumber} 题`
-                        : "文件结构"}
+                        ? t("library.question.original", {
+                            number: issue.questionNumber,
+                          })
+                        : t("library.importIssues.fileStructure")}
                       {issue.code ? ` · ${issue.code}` : ""}
                     </small>
                     <strong>{issue.message}</strong>
@@ -893,14 +963,14 @@ export function ImportIssueDetailsScreen({
             </div>
           ) : (
             <div className="scope-empty-card">
-              <strong>未发现导入问题</strong>
-              <span>题目结构检查已通过。</span>
+              <strong>{t("library.importIssues.emptyTitle")}</strong>
+              <span>{t("library.importIssues.emptyDescription")}</span>
             </div>
           )}
         </section>
 
         <p className="bank-note">
-          应用不会补写源文件中不存在的答案或解析。
+          {t("library.importIssues.sourceNote")}
         </p>
       </div>
     </main>
@@ -912,6 +982,7 @@ export function RenameBankSheet({
   onCancel,
   onSave,
 }: RenameBankSheetProps) {
+  const { t } = useI18n();
   const inputId = useId();
   const [name, setName] = useState(currentName);
   const normalizedName = name.trim();
@@ -925,18 +996,20 @@ export function RenameBankSheet({
         aria-labelledby="rename-bank-title"
       >
         <header className="sheet-header">
-          <h2 id="rename-bank-title">重命名题库</h2>
+          <h2 id="rename-bank-title">{t("library.rename.title")}</h2>
           <button
             type="button"
             className="sheet-close"
-            aria-label="取消重命名"
+            aria-label={t("library.rename.cancelAria")}
             onClick={onCancel}
           >
             ×
           </button>
         </header>
         <div className="sheet-body">
-          <label className="field-label" htmlFor={inputId}>题库名称</label>
+          <label className="field-label" htmlFor={inputId}>
+            {t("library.import.bankName")}
+          </label>
           <input
             id={inputId}
             className="text-field"
@@ -948,7 +1021,7 @@ export function RenameBankSheet({
         </div>
         <footer className="sheet-submit-bar import-sheet-footer">
           <button type="button" className="secondary-button" onClick={onCancel}>
-            取消
+            {t("library.common.cancel")}
           </button>
           <button
             type="button"
@@ -956,7 +1029,7 @@ export function RenameBankSheet({
             disabled={!normalizedName || normalizedName === currentName.trim()}
             onClick={() => onSave(normalizedName)}
           >
-            保存
+            {t("library.common.save")}
           </button>
         </footer>
       </section>
@@ -969,6 +1042,8 @@ export function DeleteBankConfirmDialog({
   onCancel,
   onConfirm,
 }: DeleteBankConfirmDialogProps) {
+  const { t } = useI18n();
+
   return (
     <div className="sheet-backdrop">
       <section
@@ -978,21 +1053,25 @@ export function DeleteBankConfirmDialog({
         aria-labelledby="delete-bank-title"
         aria-describedby="delete-bank-description"
       >
-        <span className="destructive-dialog-symbol" aria-hidden="true">删</span>
-        <h2 id="delete-bank-title">删除“{bankName}”？</h2>
+        <span className="destructive-dialog-symbol" aria-hidden="true">
+          {t("library.deleteBank.symbol")}
+        </span>
+        <h2 id="delete-bank-title">
+          {t("library.deleteBank.title", { name: bankName })}
+        </h2>
         <p id="delete-bank-description">
-          题目、答题进度、错题和自建分区都会从当前设备移除，此操作无法撤销。
+          {t("library.deleteBank.description")}
         </p>
         <div className="modal-actions">
           <button type="button" className="secondary-button" onClick={onCancel}>
-            取消
+            {t("library.common.cancel")}
           </button>
           <button
             type="button"
             className="primary-button danger-button"
             onClick={onConfirm}
           >
-            删除
+            {t("library.common.delete")}
           </button>
         </div>
       </section>
@@ -1006,6 +1085,8 @@ export function DeletePartitionConfirmDialog({
   onCancel,
   onConfirm,
 }: DeletePartitionConfirmDialogProps) {
+  const { t } = useI18n();
+
   return (
     <div className="sheet-backdrop">
       <section
@@ -1015,21 +1096,25 @@ export function DeletePartitionConfirmDialog({
         aria-labelledby="delete-partition-title"
         aria-describedby="delete-partition-description"
       >
-        <span className="destructive-dialog-symbol" aria-hidden="true">删</span>
-        <h2 id="delete-partition-title">删除“{partitionName}”？</h2>
+        <span className="destructive-dialog-symbol" aria-hidden="true">
+          {t("library.deleteBank.symbol")}
+        </span>
+        <h2 id="delete-partition-title">
+          {t("library.deletePartition.title", { name: partitionName })}
+        </h2>
         <p id="delete-partition-description">
-          将移除这个分区及其中 {questionCount} 道题的引用，不会删除原题或错题记录。
+          {t("library.deletePartition.description", { count: questionCount })}
         </p>
         <div className="modal-actions">
           <button type="button" className="secondary-button" onClick={onCancel}>
-            取消
+            {t("library.common.cancel")}
           </button>
           <button
             type="button"
             className="primary-button danger-button"
             onClick={onConfirm}
           >
-            删除分区
+            {t("library.deletePartition.confirm")}
           </button>
         </div>
       </section>
@@ -1047,9 +1132,14 @@ export function ScopeListScreen({
   onEditPartition,
   onDeletePartition,
 }: ScopeListScreenProps) {
+  const { t } = useI18n();
   const isPartitions = kind === "partitions";
-  const title = isPartitions ? "自建分区" : "文件分类";
-  const emptyText = isPartitions ? "暂无自建分区" : "原文件未包含分类";
+  const title = isPartitions
+    ? t("library.scopeList.partitions")
+    : t("library.scopeList.categories");
+  const emptyText = isPartitions
+    ? t("library.scopeList.emptyPartitions")
+    : t("library.scopeList.emptyCategories");
 
   return (
     <main className="app-shell library-shell detail-shell">
@@ -1057,7 +1147,7 @@ export function ScopeListScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
           <h1>{title}</h1>
           {isPartitions && onCreatePartition ? (
@@ -1066,7 +1156,7 @@ export function ScopeListScreen({
               className="detail-settings-action"
               onClick={onCreatePartition}
             >
-              新建
+              {t("library.scopeList.create")}
             </button>
           ) : (
             <span aria-hidden="true" />
@@ -1074,14 +1164,17 @@ export function ScopeListScreen({
         </header>
 
         {isPartitions && onCreateWithAi ? (
-          <section className="ai-create-callout" aria-label="AI 创建分区">
+          <section
+            className="ai-create-callout"
+            aria-label={t("library.scopeList.aiAria")}
+          >
             <span className="ai-spark" aria-hidden="true">AI</span>
             <span>
-              <strong>按你的意愿挑题</strong>
-              <small>描述想记的内容，由 AI 给出候选题目，再由你确认。</small>
+              <strong>{t("library.scopeList.aiTitle")}</strong>
+              <small>{t("library.scopeList.aiDescription")}</small>
             </span>
             <button type="button" onClick={onCreateWithAi}>
-              AI 创建
+              {t("library.scopeList.aiCreate")}
             </button>
           </section>
         ) : null}
@@ -1089,7 +1182,13 @@ export function ScopeListScreen({
         <section aria-labelledby="scope-list-title">
           <div className="section-heading">
             <h2 id="scope-list-title">{title}</h2>
-            <span>{items.length} 个</span>
+            <span>
+              {countLabel(
+                t,
+                isPartitions ? "partition" : "category",
+                items.length,
+              )}
+            </span>
           </div>
           {items.length > 0 ? (
             <div className="scope-directory-card">
@@ -1105,10 +1204,14 @@ export function ScopeListScreen({
                         className="scope-directory-main"
                         onClick={() => onSelect(item.id)}
                       >
-                        <span className="scope-icon" aria-hidden="true">区</span>
+                        <span className="scope-icon" aria-hidden="true">
+                          {t("library.scope.partitionSymbol")}
+                        </span>
                         <span className="scope-directory-copy">
                           <strong>{item.name}</strong>
-                          <small>{item.questionCount} 题</small>
+                          <small>
+                            {countLabel(t, "question", item.questionCount)}
+                          </small>
                         </span>
                         <span className="chevron" aria-hidden="true">›</span>
                       </button>
@@ -1117,9 +1220,11 @@ export function ScopeListScreen({
                           <button
                             type="button"
                             onClick={() => onEditPartition(item.id)}
-                            aria-label={`编辑分区“${item.name}”`}
+                            aria-label={t("library.scopeList.editAria", {
+                              name: item.name,
+                            })}
                           >
-                            编辑
+                            {t("library.common.edit")}
                           </button>
                         ) : null}
                         {onDeletePartition ? (
@@ -1127,9 +1232,11 @@ export function ScopeListScreen({
                             type="button"
                             className="danger-text-button"
                             onClick={() => onDeletePartition(item.id)}
-                            aria-label={`删除分区“${item.name}”`}
+                            aria-label={t("library.scopeList.deleteAria", {
+                              name: item.name,
+                            })}
                           >
-                            删除
+                            {t("library.common.delete")}
                           </button>
                         ) : null}
                       </span>
@@ -1145,11 +1252,13 @@ export function ScopeListScreen({
                     onClick={() => onSelect(item.id)}
                   >
                     <span className="scope-icon" aria-hidden="true">
-                      {isPartitions ? "区" : "文"}
+                      {isPartitions
+                        ? t("library.scope.partitionSymbol")
+                        : t("library.scope.categorySymbol")}
                     </span>
                     <span className="scope-directory-copy">
                       <strong>{item.name}</strong>
-                      <small>{item.questionCount} 题</small>
+                      <small>{countLabel(t, "question", item.questionCount)}</small>
                     </span>
                     <span className="chevron" aria-hidden="true">›</span>
                   </button>
@@ -1173,39 +1282,45 @@ export function ScopePracticeScreen({
   onStartRandom,
   onStartExam,
 }: ScopePracticeScreenProps) {
+  const { t } = useI18n();
+
   return (
     <main className="app-shell library-shell detail-shell">
       <div className="library-page">
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>练习范围</h1>
+          <h1>{t("library.scopePractice.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="bank-overview scope-practice-overview">
-          <span className="scope-icon" aria-hidden="true">范</span>
+          <span className="scope-icon" aria-hidden="true">
+            {t("library.scopePractice.symbol")}
+          </span>
           <div>
             <h2>{scopeName}</h2>
-            <p>{questionCount} 题</p>
+            <p>{countLabel(t, "question", questionCount)}</p>
           </div>
         </section>
 
         <section className="mode-section" aria-labelledby="scope-mode-title">
           <div className="section-heading">
-            <h2 id="scope-mode-title">练习方式</h2>
+            <h2 id="scope-mode-title">{t("library.modes.title")}</h2>
           </div>
           <button
             type="button"
             className="mode-featured"
             onClick={onStartSequential}
           >
-            <span className="mode-symbol" aria-hidden="true">序</span>
+            <span className="mode-symbol" aria-hidden="true">
+              {t("library.modes.sequentialSymbol")}
+            </span>
             <span>
-              <strong>顺序练习</strong>
-              <small>按当前范围的原题顺序练习</small>
+              <strong>{t("library.modes.sequential")}</strong>
+              <small>{t("library.scopePractice.sequentialDescription")}</small>
             </span>
             <span className="chevron" aria-hidden="true">›</span>
           </button>
@@ -1215,10 +1330,12 @@ export function ScopePracticeScreen({
               className="secondary-mode-card"
               onClick={onStartRandom}
             >
-              <span className="secondary-mode-symbol" aria-hidden="true">随</span>
+              <span className="secondary-mode-symbol" aria-hidden="true">
+                {t("library.modes.randomSymbol")}
+              </span>
               <span>
-                <strong>随机练习</strong>
-                <small>重新排列当前范围题目</small>
+                <strong>{t("library.modes.random")}</strong>
+                <small>{t("library.scopePractice.randomDescription")}</small>
               </span>
             </button>
             <button
@@ -1226,10 +1343,12 @@ export function ScopePracticeScreen({
               className="secondary-mode-card exam"
               onClick={onStartExam}
             >
-              <span className="secondary-mode-symbol" aria-hidden="true">考</span>
+              <span className="secondary-mode-symbol" aria-hidden="true">
+                {t("library.modes.examSymbol")}
+              </span>
               <span>
-                <strong>模拟考试</strong>
-                <small>交卷后统一查看答案</small>
+                <strong>{t("library.modes.exam")}</strong>
+                <small>{t("library.modes.examDescription")}</small>
               </span>
             </button>
           </div>
@@ -1240,13 +1359,14 @@ export function ScopePracticeScreen({
 }
 
 export function PartitionEditorScreen({
-  title = "编辑自建分区",
+  title,
   initialName = "",
   questions,
   initialSelectedQuestionIds = [],
   onCancel,
   onSave,
 }: PartitionEditorScreenProps) {
+  const { t } = useI18n();
   const inputId = useId();
   const [name, setName] = useState(initialName);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(
@@ -1274,14 +1394,16 @@ export function PartitionEditorScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onCancel}>
             <span aria-hidden="true">‹</span>
-            取消
+            {t("library.partitionEditor.cancel")}
           </button>
-          <h1>{title}</h1>
+          <h1>{title ?? t("library.partitionEditor.defaultTitle")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="editor-name-card">
-          <label className="field-label" htmlFor={inputId}>分区名称</label>
+          <label className="field-label" htmlFor={inputId}>
+            {t("library.partitionEditor.name")}
+          </label>
           <input
             id={inputId}
             className="text-field"
@@ -1293,8 +1415,14 @@ export function PartitionEditorScreen({
 
         <section className="partition-question-section" aria-labelledby="question-select-title">
           <div className="section-heading">
-            <h2 id="question-select-title">选择题目</h2>
-            <span>已选 {selectedQuestionIds.size} 题</span>
+            <h2 id="question-select-title">
+              {t("library.partitionEditor.selectQuestions")}
+            </h2>
+            <span>
+              {t("library.partitionEditor.selected", {
+                count: selectedQuestionIds.size,
+              })}
+            </span>
           </div>
           <PartitionQuestionChecklist
             questions={questions}
@@ -1306,7 +1434,11 @@ export function PartitionEditorScreen({
 
       <footer className="editor-action-bar">
         <div className="editor-action-bar-inner">
-          <span>已选 <strong>{selectedQuestionIds.size}</strong> 题</span>
+          <span>
+            {t("library.partitionEditor.selected", {
+              count: selectedQuestionIds.size,
+            })}
+          </span>
           <button
             type="button"
             disabled={!canSave}
@@ -1315,7 +1447,7 @@ export function PartitionEditorScreen({
               Array.from(selectedQuestionIds),
             )}
           >
-            保存
+            {t("library.common.save")}
           </button>
         </div>
       </footer>
@@ -1331,6 +1463,7 @@ export function WrongQuestionsScreen({
   onStartExam,
   onRemoveQuestion,
 }: WrongQuestionsScreenProps) {
+  const { t } = useI18n();
   const hasQuestions = questions.length > 0;
 
   return (
@@ -1339,20 +1472,20 @@ export function WrongQuestionsScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>错题专项</h1>
+          <h1>{t("library.wrong.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="bank-overview wrong-overview">
-          <h2>{questions.length} 题</h2>
-          <p>移除错题记录不会删除原题。</p>
+          <h2>{countLabel(t, "question", questions.length)}</h2>
+          <p>{t("library.wrong.removeDescription")}</p>
         </section>
 
         <section className="mode-section" aria-labelledby="wrong-mode-title">
           <div className="section-heading">
-            <h2 id="wrong-mode-title">练习方式</h2>
+            <h2 id="wrong-mode-title">{t("library.modes.title")}</h2>
           </div>
           <button
             type="button"
@@ -1360,10 +1493,12 @@ export function WrongQuestionsScreen({
             disabled={!hasQuestions}
             onClick={onStartSequential}
           >
-            <span className="mode-symbol" aria-hidden="true">序</span>
+            <span className="mode-symbol" aria-hidden="true">
+              {t("library.modes.sequentialSymbol")}
+            </span>
             <span>
-              <strong>顺序练习</strong>
-              <small>按错题记录顺序练习</small>
+              <strong>{t("library.modes.sequential")}</strong>
+              <small>{t("library.wrong.sequentialDescription")}</small>
             </span>
             <span className="chevron" aria-hidden="true">›</span>
           </button>
@@ -1374,10 +1509,12 @@ export function WrongQuestionsScreen({
               disabled={!hasQuestions}
               onClick={onStartRandom}
             >
-              <span className="secondary-mode-symbol" aria-hidden="true">随</span>
+              <span className="secondary-mode-symbol" aria-hidden="true">
+                {t("library.modes.randomSymbol")}
+              </span>
               <span>
-                <strong>随机练习</strong>
-                <small>重新排列当前错题</small>
+                <strong>{t("library.modes.random")}</strong>
+                <small>{t("library.wrong.randomDescription")}</small>
               </span>
             </button>
             <button
@@ -1386,10 +1523,12 @@ export function WrongQuestionsScreen({
               disabled={!hasQuestions}
               onClick={onStartExam}
             >
-              <span className="secondary-mode-symbol" aria-hidden="true">考</span>
+              <span className="secondary-mode-symbol" aria-hidden="true">
+                {t("library.modes.examSymbol")}
+              </span>
               <span>
-                <strong>模拟考试</strong>
-                <small>交卷后统一查看答案</small>
+                <strong>{t("library.modes.exam")}</strong>
+                <small>{t("library.modes.examDescription")}</small>
               </span>
             </button>
           </div>
@@ -1397,14 +1536,18 @@ export function WrongQuestionsScreen({
 
         <section className="wrong-list-section" aria-labelledby="wrong-list-title">
           <div className="section-heading">
-            <h2 id="wrong-list-title">错题列表</h2>
-            <span>{questions.length} 题</span>
+            <h2 id="wrong-list-title">{t("library.wrong.list")}</h2>
+            <span>{countLabel(t, "question", questions.length)}</span>
           </div>
           {hasQuestions ? (
             <div className="wrong-question-list">
               {questions.map((question) => {
                 const metadata = [
-                  question.number ? `原题第 ${question.number} 题` : "",
+                  question.number
+                    ? t("library.question.original", {
+                        number: question.number,
+                      })
+                    : "",
                   question.typeLabel ?? "",
                 ].filter(Boolean).join(" · ");
 
@@ -1417,16 +1560,20 @@ export function WrongQuestionsScreen({
                     <button
                       type="button"
                       onClick={() => onRemoveQuestion(question.id)}
-                      aria-label={`移除${question.number ? `第 ${question.number} 题` : "错题"}`}
+                      aria-label={question.number
+                        ? t("library.wrong.removeQuestionAria", {
+                            number: question.number,
+                          })
+                        : t("library.wrong.removeGenericAria")}
                     >
-                      移除
+                      {t("library.common.remove")}
                     </button>
                   </article>
                 );
               })}
             </div>
           ) : (
-            <div className="scope-empty-card">暂无错题</div>
+            <div className="scope-empty-card">{t("library.scope.noWrong")}</div>
           )}
         </section>
       </div>
@@ -1442,58 +1589,114 @@ export function SettingsScreen({
   onBack,
   onOpenLibrary,
   onOpenModelApi,
-  aiStatusLabel = "未配置",
+  aiStatusLabel,
 }: SettingsScreenProps) {
+  const { preference, setPreference, t } = useI18n();
+  const languageOptions = [
+    {
+      value: "system" as const,
+      label: t("library.settings.followSystem"),
+    },
+    {
+      value: "zh-CN" as const,
+      label: t("library.settings.simplifiedChinese"),
+    },
+    {
+      value: "en-US" as const,
+      label: t("library.settings.english"),
+    },
+  ];
+
   return (
     <main className="app-shell library-shell settings-shell">
       <div className="library-page">
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>设置</h1>
+          <h1>{t("library.settings.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
+        <section
+          className="settings-group"
+          aria-labelledby="language-settings-title"
+        >
+          <div className="section-heading">
+            <h2 id="language-settings-title">
+              {t("library.settings.languageTitle")}
+            </h2>
+            <span>{t("library.settings.languageDescription")}</span>
+          </div>
+          <div
+            className="settings-card language-options"
+            role="radiogroup"
+            aria-label={t("library.settings.languageAria")}
+          >
+            {languageOptions.map((option) => {
+              const selected = preference === option.value;
+              return (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  className={`language-option ${selected ? "selected" : ""}`}
+                  key={option.value}
+                  onClick={() => setPreference(option.value)}
+                >
+                  <span>{option.label}</span>
+                  <span className="language-option-check" aria-hidden="true">
+                    {selected ? "✓" : ""}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         <section className="settings-group" aria-labelledby="exam-settings-title">
           <div className="section-heading">
-            <h2 id="exam-settings-title">模拟考试</h2>
+            <h2 id="exam-settings-title">{t("library.settings.exam")}</h2>
           </div>
           <div className="settings-card">
             <div className="setting-row">
               <span className="setting-copy">
-                <strong>题目乱序</strong>
-                <span>每次考试生成新的题目顺序</span>
+                <strong>{t("library.settings.shuffleQuestions")}</strong>
+                <span>{t("library.settings.shuffleQuestionsDescription")}</span>
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={shuffleQuestions}
-                aria-label="题目乱序"
+                aria-label={t("library.settings.shuffleQuestions")}
                 className={`switch ${shuffleQuestions ? "on" : ""}`}
                 onClick={onToggleQuestions}
               >
                 <span className="sr-only">
-                  {shuffleQuestions ? "已开启" : "已关闭"}
+                  {shuffleQuestions
+                    ? t("library.settings.enabled")
+                    : t("library.settings.disabled")}
                 </span>
               </button>
             </div>
             <div className="setting-row">
               <span className="setting-copy">
-                <strong>选项乱序</strong>
-                <span>判断题及依赖顺序的题目保持原样</span>
+                <strong>{t("library.settings.shuffleOptions")}</strong>
+                <span>{t("library.settings.shuffleOptionsDescription")}</span>
               </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={shuffleOptions}
-                aria-label="选项乱序"
+                aria-label={t("library.settings.shuffleOptions")}
                 className={`switch ${shuffleOptions ? "on" : ""}`}
                 onClick={onToggleOptions}
               >
                 <span className="sr-only">
-                  {shuffleOptions ? "已开启" : "已关闭"}
+                  {shuffleOptions
+                    ? t("library.settings.enabled")
+                    : t("library.settings.disabled")}
                 </span>
               </button>
             </div>
@@ -1502,7 +1705,9 @@ export function SettingsScreen({
 
         <section className="settings-group" aria-labelledby="connection-settings-title">
           <div className="section-heading">
-            <h2 id="connection-settings-title">AI 模型服务</h2>
+            <h2 id="connection-settings-title">
+              {t("library.settings.aiService")}
+            </h2>
           </div>
           <div className="settings-card settings-link-card">
             <button
@@ -1511,8 +1716,10 @@ export function SettingsScreen({
               onClick={onOpenModelApi}
             >
               <span className="setting-copy">
-                <strong>模型 API</strong>
-                <span>{aiStatusLabel}</span>
+                <strong>{t("library.settings.modelApi")}</strong>
+                <span>
+                  {aiStatusLabel ?? t("library.settings.aiUnconfigured")}
+                </span>
               </span>
               <span className="chevron" aria-hidden="true">›</span>
             </button>
@@ -1521,11 +1728,11 @@ export function SettingsScreen({
 
         <section className="settings-group" aria-labelledby="data-settings-title">
           <div className="section-heading">
-            <h2 id="data-settings-title">数据</h2>
+            <h2 id="data-settings-title">{t("library.settings.data")}</h2>
           </div>
           <div className="info-card">
-            <strong>答题进度保存在当前设备</strong>
-            <span>练习、考试和题目内容均可离线使用。</span>
+            <strong>{t("library.settings.localProgress")}</strong>
+            <span>{t("library.settings.offlineAvailable")}</span>
           </div>
         </section>
       </div>
@@ -1553,6 +1760,7 @@ export function AiConfigScreen({
   onValueChange,
   onClear,
 }: AiConfigScreenProps) {
+  const { t } = useI18n();
   const baseUrlId = useId();
   const apiKeyId = useId();
   const modelId = useId();
@@ -1571,13 +1779,8 @@ export function AiConfigScreen({
   const canSubmit = Boolean(value.baseUrl && value.apiKey && value.model);
   const busy =
     isSaving || isTesting || isClearing || status === "testing";
-  const statusCopy = statusMessage ?? {
-    unconfigured: "填写并测试后即可使用 AI 分区。",
-    saved: "配置已保存在当前设备，建议测试连接。",
-    testing: "正在测试连接…",
-    connected: "连接正常，可以使用 AI 分区。",
-    error: "连接失败，请检查地址、密钥和模型名称。",
-  }[status];
+  const statusCopy = statusMessage
+    ?? t(`library.aiConfig.statusCopy.${status}`);
   const applyDeepSeekPreset = (selectedModel: string) => {
     setBaseUrl(DEEPSEEK_API_BASE_URL);
     setModel(selectedModel);
@@ -1590,22 +1793,22 @@ export function AiConfigScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>模型 API</h1>
+          <h1>{t("library.aiConfig.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="settings-group" aria-labelledby="ai-api-title">
           <div className="section-heading">
-            <h2 id="ai-api-title">连接配置</h2>
-            <span>OpenAI 兼容接口</span>
+            <h2 id="ai-api-title">{t("library.aiConfig.connection")}</h2>
+            <span>{t("library.aiConfig.compatibleApi")}</span>
           </div>
           <div className="ai-config-card">
             <div className="ai-provider-preset">
               <span>
-                <strong>DeepSeek 官方</strong>
-                <small>自动填写接口地址和当前可用模型</small>
+                <strong>{t("library.aiConfig.deepSeekOfficial")}</strong>
+                <small>{t("library.aiConfig.presetDescription")}</small>
               </span>
               <div>
                 <button
@@ -1619,7 +1822,7 @@ export function AiConfigScreen({
                     applyDeepSeekPreset(DEEPSEEK_DEFAULT_MODEL)
                   }
                 >
-                  V4 Flash（推荐）
+                  {t("library.aiConfig.flashRecommended")}
                 </button>
                 <button
                   type="button"
@@ -1632,19 +1835,21 @@ export function AiConfigScreen({
                     applyDeepSeekPreset(DEEPSEEK_PRO_MODEL)
                   }
                 >
-                  V4 Pro
+                  {t("library.aiConfig.pro")}
                 </button>
               </div>
             </div>
 
-            <label className="field-label" htmlFor={baseUrlId}>接口地址</label>
+            <label className="field-label" htmlFor={baseUrlId}>
+              {t("library.aiConfig.baseUrl")}
+            </label>
             <input
               id={baseUrlId}
               className="text-field"
               type="url"
               inputMode="url"
               value={baseUrl}
-              placeholder="https://api.deepseek.com"
+              placeholder={t("library.aiConfig.baseUrlPlaceholder")}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -1654,11 +1859,11 @@ export function AiConfigScreen({
               }}
             />
             <small className="field-help">
-              填写服务商提供的 API 根地址，不要填写聊天网页地址。
+              {t("library.aiConfig.baseUrlHelp")}
             </small>
 
             <label className="field-label field-label-spaced" htmlFor={apiKeyId}>
-              API Key
+              {t("library.aiConfig.apiKey")}
             </label>
             <div className="secret-field">
               <input
@@ -1666,7 +1871,7 @@ export function AiConfigScreen({
                 className="text-field"
                 type={showApiKey ? "text" : "password"}
                 value={apiKey}
-                placeholder="sk-…"
+                placeholder={t("library.aiConfig.apiKeyPlaceholder")}
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
@@ -1678,26 +1883,29 @@ export function AiConfigScreen({
               />
               <button
                 type="button"
-                aria-label={showApiKey ? "隐藏 API Key" : "显示 API Key"}
+                aria-label={showApiKey
+                  ? t("library.aiConfig.hideApiKeyAria")
+                  : t("library.aiConfig.showApiKeyAria")}
                 aria-pressed={showApiKey}
                 onClick={() => setShowApiKey((current) => !current)}
               >
-                {showApiKey ? "隐藏" : "显示"}
+                {showApiKey
+                  ? t("library.aiConfig.hide")
+                  : t("library.aiConfig.show")}
               </button>
             </div>
             <small className="field-help">
-              Android 使用系统密钥库加密保存；网页预览会以明文保存在本机浏览器，
-              仅适合本地预览，请勿在共享设备保存真实密钥。
+              {t("ai.keyStorage.webPreview")}
             </small>
 
             <label className="field-label field-label-spaced" htmlFor={modelId}>
-              模型
+              {t("library.aiConfig.model")}
             </label>
             <input
               id={modelId}
               className="text-field"
               value={model}
-              placeholder="deepseek-v4-flash"
+              placeholder={t("library.aiConfig.modelPlaceholder")}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
@@ -1707,8 +1915,7 @@ export function AiConfigScreen({
               }}
             />
             <small className="field-help">
-              DeepSeek 请使用 deepseek-v4-flash 或 deepseek-v4-pro；
-              已停用的旧模型名会自动迁移。
+              {t("library.aiConfig.modelHelp")}
             </small>
           </div>
         </section>
@@ -1716,20 +1923,12 @@ export function AiConfigScreen({
         <section
           className={`ai-connection-status ${status}`}
           aria-live="polite"
-          aria-label="模型连接状态"
+          aria-label={t("library.aiConfig.statusAria")}
         >
           <span className="status-dot" aria-hidden="true" />
           <span>
             <strong>
-              {status === "connected"
-                ? "已连接"
-                : status === "error"
-                  ? "连接异常"
-                  : status === "testing"
-                    ? "测试中"
-                    : status === "saved"
-                      ? "已保存"
-                      : "未配置"}
+              {t(`library.aiConfig.status.${status}`)}
             </strong>
             <small>{statusCopy}</small>
           </span>
@@ -1742,7 +1941,9 @@ export function AiConfigScreen({
             disabled={!canSubmit || busy}
             onClick={() => onTestConnection(value)}
           >
-            {isTesting || status === "testing" ? "测试中…" : "测试连接"}
+            {isTesting || status === "testing"
+              ? t("library.aiConfig.testing")
+              : t("library.aiConfig.test")}
           </button>
           <button
             type="button"
@@ -1750,7 +1951,9 @@ export function AiConfigScreen({
             disabled={!canSubmit || busy}
             onClick={() => onSave(value)}
           >
-            {isSaving ? "保存中…" : "保存配置"}
+            {isSaving
+              ? t("library.aiConfig.saving")
+              : t("library.aiConfig.save")}
           </button>
         </div>
 
@@ -1761,12 +1964,14 @@ export function AiConfigScreen({
             disabled={busy}
             onClick={() => setClearOpen(true)}
           >
-            {isClearing ? "清除中…" : "清除已保存配置"}
+            {isClearing
+              ? t("library.aiConfig.clearing")
+              : t("library.aiConfig.clearSaved")}
           </button>
         ) : null}
 
         <p className="bank-note">
-          AI 仅用于按意愿筛选候选题目；保存前仍由你人工核对。
+          {t("library.aiConfig.reviewNote")}
         </p>
       </div>
 
@@ -1780,11 +1985,11 @@ export function AiConfigScreen({
             aria-describedby={clearDescriptionId}
           >
             <span className="destructive-dialog-symbol" aria-hidden="true">
-              清
+              {t("library.aiConfig.clearSymbol")}
             </span>
-            <h2 id={clearTitleId}>清除模型配置？</h2>
+            <h2 id={clearTitleId}>{t("library.aiConfig.clearTitle")}</h2>
             <p id={clearDescriptionId}>
-              接口地址、模型名称和 API Key 都会从当前设备移除。
+              {t("library.aiConfig.clearDescription")}
             </p>
             <div className="modal-actions">
               <button
@@ -1792,7 +1997,7 @@ export function AiConfigScreen({
                 className="secondary-button"
                 onClick={() => setClearOpen(false)}
               >
-                取消
+                {t("library.common.cancel")}
               </button>
               <button
                 type="button"
@@ -1802,7 +2007,7 @@ export function AiConfigScreen({
                   onClear();
                 }}
               >
-                清除配置
+                {t("library.aiConfig.clearConfirm")}
               </button>
             </div>
           </section>
@@ -1816,17 +2021,20 @@ export function AiPartitionIntentScreen({
   bankName,
   initialIntent = "",
   isConfigured,
+  isBusy = false,
+  errorMessage,
   onBack,
   onOpenSettings,
   onContinue,
 }: AiPartitionIntentScreenProps) {
+  const { t } = useI18n();
   const intentId = useId();
   const [intent, setIntent] = useState(initialIntent);
   const normalizedIntent = intent.trim();
   const examples = [
-    "把容易混淆的数字、期限和比例题放在一起",
-    "筛选安全作业和应急处置相关题目",
-    "找出我需要重点记忆的多选题",
+    t("library.aiIntent.exampleNumbers"),
+    t("library.aiIntent.exampleSafety"),
+    t("library.aiIntent.exampleMultipleChoice"),
   ];
 
   return (
@@ -1835,55 +2043,63 @@ export function AiPartitionIntentScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            返回
+            {t("library.common.back")}
           </button>
-          <h1>AI 创建分区</h1>
+          <h1>{t("library.aiIntent.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="ai-flow-intro">
           <span className="ai-spark large" aria-hidden="true">AI</span>
           <div>
-            <h2>你想集中记哪些内容？</h2>
-            <p>AI 会从“{bankName}”中挑选候选题目，不会修改原题。</p>
+            <h2>{t("library.aiIntent.heading")}</h2>
+            <p>{t("library.aiIntent.description", { name: bankName })}</p>
           </div>
         </section>
 
         {!isConfigured ? (
           <section className="ai-config-required" role="status">
             <div>
-              <strong>需要先配置模型 API</strong>
-              <span>配置完成后即可按描述筛选题目。</span>
+              <strong>{t("library.aiIntent.configRequired")}</strong>
+              <span>{t("library.aiIntent.configRequiredDescription")}</span>
             </div>
-            <button type="button" onClick={onOpenSettings}>去配置</button>
+            <button type="button" onClick={onOpenSettings}>
+              {t("library.aiIntent.openSettings")}
+            </button>
           </section>
         ) : null}
 
         <section className="ai-intent-card">
-          <label className="field-label" htmlFor={intentId}>分区意愿</label>
+          <label className="field-label" htmlFor={intentId}>
+            {t("library.aiIntent.label")}
+          </label>
           <textarea
             id={intentId}
             className="ai-intent-field"
             value={intent}
             maxLength={500}
-            placeholder="例如：帮我找出涉及检修周期、时间限制和数值标准的题目，方便集中背诵。"
+            placeholder={t("library.aiIntent.placeholder")}
+            disabled={isBusy}
             onChange={(event) => setIntent(event.target.value)}
           />
           <div className="intent-field-meta">
-            <span>描述越具体，候选结果越贴近你的意愿</span>
+            <span>{t("library.aiIntent.help")}</span>
             <span>{intent.length} / 500</span>
           </div>
         </section>
 
         <section className="intent-examples" aria-labelledby="intent-examples-title">
           <div className="section-heading">
-            <h2 id="intent-examples-title">可以这样说</h2>
+            <h2 id="intent-examples-title">
+              {t("library.aiIntent.examplesTitle")}
+            </h2>
           </div>
           <div>
             {examples.map((example) => (
               <button
                 type="button"
                 key={example}
+                disabled={isBusy}
                 onClick={() => setIntent(example)}
               >
                 {example}
@@ -1892,13 +2108,25 @@ export function AiPartitionIntentScreen({
           </div>
         </section>
 
+        {isBusy || errorMessage ? (
+          <section
+            className={`ai-intent-status ${errorMessage ? "error" : ""}`}
+            role={errorMessage ? "alert" : "status"}
+            aria-live="polite"
+          >
+            {errorMessage ?? t("library.aiIntent.organizing")}
+          </section>
+        ) : null}
+
         <button
           type="button"
           className="primary-button ai-flow-primary"
-          disabled={!isConfigured || !normalizedIntent}
+          disabled={!isConfigured || !normalizedIntent || isBusy}
           onClick={() => onContinue(normalizedIntent)}
         >
-          下一步
+          {isBusy
+            ? t("library.aiIntent.organizingButton")
+            : t("library.aiIntent.next")}
         </button>
       </div>
     </main>
@@ -1909,46 +2137,67 @@ export function AiPartitionConfirmScreen({
   bankName,
   questionCount,
   intent,
+  summary,
+  suggestedPartitionName,
   onBack,
   onStart,
 }: AiPartitionConfirmScreenProps) {
+  const { t } = useI18n();
+  const normalizedSummary = summary?.trim();
+  const showOriginalIntent = Boolean(
+    normalizedSummary && normalizedSummary !== intent.trim(),
+  );
+
   return (
     <main className="app-shell library-shell detail-shell ai-flow-shell">
       <div className="library-page">
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
             <span aria-hidden="true">‹</span>
-            修改
+            {t("library.aiConfirm.modify")}
           </button>
-          <h1>确认 AI 分区</h1>
+          <h1>{t("library.aiConfirm.title")}</h1>
           <span aria-hidden="true" />
         </header>
 
         <section className="ai-confirm-card">
-          <span className="confirmation-label">你的意愿</span>
-          <blockquote>{intent}</blockquote>
+          <span className="confirmation-label">
+            {t(normalizedSummary
+              ? "library.aiConfirm.summaryLabel"
+              : "library.aiConfirm.intentLabel")}
+          </span>
+          <blockquote>{normalizedSummary ?? intent}</blockquote>
           <dl>
+            {showOriginalIntent ? (
+              <div>
+                <dt>{t("library.aiConfirm.originalIntent")}</dt>
+                <dd>{intent}</dd>
+              </div>
+            ) : null}
             <div>
-              <dt>题库</dt>
+              <dt>{t("library.aiConfirm.bank")}</dt>
               <dd>{bankName}</dd>
             </div>
             <div>
-              <dt>筛选范围</dt>
-              <dd>{questionCount} 题</dd>
+              <dt>{t("library.aiConfirm.scope")}</dt>
+              <dd>{countLabel(t, "question", questionCount)}</dd>
             </div>
+            {suggestedPartitionName ? (
+              <div>
+                <dt>{t("library.aiConfirm.suggestedName")}</dt>
+                <dd>{suggestedPartitionName}</dd>
+              </div>
+            ) : null}
             <div>
-              <dt>输出方式</dt>
-              <dd>候选题目，人工确认后保存</dd>
+              <dt>{t("library.aiConfirm.output")}</dt>
+              <dd>{t("library.aiConfirm.outputDescription")}</dd>
             </div>
           </dl>
         </section>
 
         <section className="ai-boundary-card">
-          <strong>开始前请注意</strong>
-          <span>
-            点击“确认并开始”后，当前题库的题干和选项才会发送到你配置的接口。
-            未确认前不会发送题库内容。AI 可能漏选或误选，生成后请逐题核对。
-          </span>
+          <strong>{t("library.aiConfirm.noticeTitle")}</strong>
+          <span>{t("library.aiConfirm.noticeDescription")}</span>
         </section>
 
         <button
@@ -1956,7 +2205,7 @@ export function AiPartitionConfirmScreen({
           className="primary-button ai-flow-primary"
           onClick={onStart}
         >
-          确认并开始
+          {t("library.aiConfirm.start")}
         </button>
       </div>
     </main>
@@ -1971,6 +2220,7 @@ export function AiPartitionProcessingScreen({
   onCancel,
   onRetry,
 }: AiPartitionProcessingScreenProps) {
+  const { t } = useI18n();
   const hasError = state === "error";
 
   return (
@@ -1986,22 +2236,32 @@ export function AiPartitionProcessingScreen({
           <span className="ai-processing-spinner" aria-hidden="true" />
         )}
         <span className="ai-spark large" aria-hidden="true">AI</span>
-        <h1>{hasError ? "生成失败" : "正在筛选候选题目"}</h1>
+        <h1>
+          {hasError
+            ? t("library.aiProcessing.failed")
+            : t("library.aiProcessing.processing")}
+        </h1>
         <p>{intent}</p>
         <small>
           {hasError
-            ? (errorMessage ?? "请检查模型配置或网络连接后重试。")
-            : `正在分析${questionCount ? ` ${questionCount} 道` : ""}题目，请保持应用在前台。`}
+            ? (errorMessage ?? t("library.aiProcessing.errorFallback"))
+            : questionCount
+              ? t("library.aiProcessing.analyzingWithCount", {
+                  count: questionCount,
+                })
+              : t("library.aiProcessing.analyzing")}
         </small>
         <div className="ai-processing-actions">
           {onCancel ? (
             <button type="button" className="quiet-button" onClick={onCancel}>
-              {hasError ? "返回" : "取消"}
+              {hasError
+                ? t("library.common.back")
+                : t("library.common.cancel")}
             </button>
           ) : null}
           {hasError && onRetry ? (
             <button type="button" className="primary-button" onClick={onRetry}>
-              重试
+              {t("library.common.retry")}
             </button>
           ) : null}
         </div>
@@ -2020,6 +2280,7 @@ export function AiPartitionReviewScreen({
   onRegenerate,
   onSave,
 }: AiPartitionReviewScreenProps) {
+  const { t } = useI18n();
   const inputId = useId();
   const [name, setName] = useState(initialName);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState(
@@ -2045,15 +2306,15 @@ export function AiPartitionReviewScreen({
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onCancel}>
             <span aria-hidden="true">‹</span>
-            取消
+            {t("library.common.cancel")}
           </button>
-          <h1>核对 AI 候选</h1>
+          <h1>{t("library.aiReview.title")}</h1>
           <button
             type="button"
             className="detail-settings-action"
             onClick={onRegenerate}
           >
-            重新生成
+            {t("library.aiReview.regenerate")}
           </button>
         </header>
 
@@ -2061,16 +2322,20 @@ export function AiPartitionReviewScreen({
           <span className="ai-spark" aria-hidden="true">AI</span>
           <div>
             <strong>
-              AI 候选 {initialSelectedQuestionIds.length} 道
+              {t("library.aiReview.candidateCount", {
+                count: initialSelectedQuestionIds.length,
+              })}
             </strong>
             <span>
-              {note ?? "可以移除误选，也可以从全部题目中补充遗漏后再保存。"}
+              {note ?? t("library.aiReview.defaultNote")}
             </span>
           </div>
         </section>
 
         <section className="editor-name-card ai-review-name-card">
-          <label className="field-label" htmlFor={inputId}>分区名称</label>
+          <label className="field-label" htmlFor={inputId}>
+            {t("library.partitionEditor.name")}
+          </label>
           <input
             id={inputId}
             className="text-field"
@@ -2078,7 +2343,9 @@ export function AiPartitionReviewScreen({
             onChange={(event) => setName(event.target.value)}
             autoComplete="off"
           />
-          <small className="field-help intent-summary">筛选意愿：{intent}</small>
+          <small className="field-help intent-summary">
+            {t("library.aiReview.intentSummary", { intent })}
+          </small>
         </section>
 
         <section
@@ -2086,8 +2353,14 @@ export function AiPartitionReviewScreen({
           aria-labelledby="ai-question-review-title"
         >
           <div className="section-heading">
-            <h2 id="ai-question-review-title">人工核对</h2>
-            <span>已选 {selectedQuestionIds.size} 题</span>
+            <h2 id="ai-question-review-title">
+              {t("library.aiReview.manualReview")}
+            </h2>
+            <span>
+              {t("library.partitionEditor.selected", {
+                count: selectedQuestionIds.size,
+              })}
+            </span>
           </div>
           {questions.length > 0 ? (
             <PartitionQuestionChecklist
@@ -2097,8 +2370,8 @@ export function AiPartitionReviewScreen({
             />
           ) : (
             <div className="scope-empty-card">
-              <strong>没有找到候选题目</strong>
-              <span>可以返回修改描述，或重新生成。</span>
+              <strong>{t("library.aiReview.emptyTitle")}</strong>
+              <span>{t("library.aiReview.emptyDescription")}</span>
             </div>
           )}
         </section>
@@ -2106,7 +2379,11 @@ export function AiPartitionReviewScreen({
 
       <footer className="editor-action-bar">
         <div className="editor-action-bar-inner">
-          <span>已选 <strong>{selectedQuestionIds.size}</strong> 题</span>
+          <span>
+            {t("library.partitionEditor.selected", {
+              count: selectedQuestionIds.size,
+            })}
+          </span>
           <button
             type="button"
             disabled={!normalizedName || selectedQuestionIds.size === 0}
@@ -2115,7 +2392,7 @@ export function AiPartitionReviewScreen({
               Array.from(selectedQuestionIds),
             )}
           >
-            保存分区
+            {t("library.aiReview.savePartition")}
           </button>
         </div>
       </footer>

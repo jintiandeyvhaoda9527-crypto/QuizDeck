@@ -6,12 +6,12 @@ QuizDeck accepts `.xls` and `.xlsx` files. Parsing happens in the client, and im
 
 | Meaning | Example header |
 | --- | --- |
-| Number | `序号` or `题号` |
-| Type | `题型` or `类型` |
-| Prompt | `题干` or `题目` |
-| Answer | `答案` or `参考答案` |
-| Options | `选项A`, `选项B`, `A选项`, `B选项` |
-| Category | `分类`, `章节`, or `知识点` |
+| Number | `序号`, `题号`, `No`, or `Number` |
+| Type | `题型`, `类型`, or `Type` |
+| Prompt | `题干`, `题目`, `Question`, or `Prompt` |
+| Answer | `答案`, `参考答案`, `Answer`, or `Correct Answer` |
+| Options | `选项A`, `A选项`, `Option A`, or `A Option` |
+| Category | `分类`, `章节`, `知识点`, `Category`, `Section`, or `Topic` |
 
 The importer locates a recognizable header row on each sheet. Blank rows are ignored. Multiple sheets retain workbook order. A category can come from a category column or, when no category column is present, from the sheet name.
 
@@ -21,14 +21,16 @@ The importer locates a recognizable header row on each sheet. Blank rows are ign
 - `多选` / `多选题`
 - `判断` / `判断题`
 - `填空` / `填空题`
-
-English header and type aliases are part of the bilingual release roadmap.
+- `Single Choice`
+- `Multiple Choice`
+- `True or False` / `Judge`
+- `Fill in the Blank`
 
 ## Answers
 
-Choice answers may use letters such as `A`, `AC`, `A、C`, or equivalent separators. A choice question whose answer points to a missing option is retained for review but marked ungradable. Fill answers are normalized for surrounding whitespace and common punctuation during grading.
+Choice answers may use letters such as `A`, `AC`, `A、C`, `Option A and Option C`, or equivalent separators. A choice question whose answer points to a missing option is retained for review but marked ungradable. Fill answers are normalized for surrounding whitespace and common punctuation during grading.
 
-Judge questions keep their option order because swapping true and false can make the source answer misleading.
+Judge questions accept Chinese values as well as `True`, `False`, `Yes`, and `No`. They keep their option order because swapping true and false can make the source answer misleading.
 
 ## Minimal example
 

@@ -54,6 +54,7 @@ import {
   generatePartitionCandidate,
   loadAiConfiguration,
   saveAiConfiguration,
+  summarizePartitionIntent,
   testAiConnection,
   validateAiSettings,
   type AiConfiguration,
@@ -65,6 +66,8 @@ import {
   dismissDemoBank,
   isDemoBankDismissed,
 } from "./demo-bank-preference";
+import { useI18n } from "./i18n";
+import { getCoreErrorMessage } from "./i18n/core-messages";
 import {
   AiConfigScreen,
   AiPartitionConfirmScreen,
@@ -115,15 +118,10 @@ const DEFAULT_PREFERENCES: Preferences = {
   shuffleOptions: true,
 };
 
-const typeLabels: Record<Question["type"], string> = {
-  single: "单选题",
-  multiple: "多选题",
-  judge: "判断题",
-  fill: "填空题",
-};
-
 const builtInBank = getBuiltInBank();
 const aiApiKeyStore = createPlatformAiApiKeyStore();
+
+type Translate = ReturnType<typeof useI18n>["t"];
 
 function optionLabel(index: number) {
   return String.fromCharCode(65 + index);
@@ -137,7 +135,11 @@ function hasAnswer(question: Question, answer?: AttemptAnswer) {
   ).answered;
 }
 
-function correctAnswerText(question: Question) {
+function questionTypeLabel(type: Question["type"], t: Translate) {
+  return t(`quiz.question.type.${type}`);
+}
+
+function correctAnswerText(question: Question, t: Translate) {
   if (question.type === "fill") {
     return question.answerText ?? "—";
   }
@@ -148,18 +150,22 @@ function correctAnswerText(question: Question) {
         (option) => option.id === key,
       );
       if (displayedIndex < 0) {
-        return `${key}（源文件缺少选项内容）`;
+        return t("quiz.answer.sourceOptionMissing", { key });
       }
 
       const option = question.options[displayedIndex];
       return `${optionLabel(displayedIndex)}. ${option.text}`;
     })
-    .join("；");
+    .join(t("quiz.answer.separator"));
 }
 
-function userAnswerText(question: Question, answer?: AttemptAnswer) {
+function userAnswerText(
+  question: Question,
+  answer: AttemptAnswer | undefined,
+  t: Translate,
+) {
   if (!answer || !hasAnswer(question, answer)) {
-    return "未作答";
+    return t("quiz.answer.unanswered");
   }
 
   if (question.type === "fill") {
@@ -178,7 +184,7 @@ function userAnswerText(question: Question, answer?: AttemptAnswer) {
       const option = question.options[displayedIndex];
       return `${optionLabel(displayedIndex)}. ${option.text}`;
     })
-    .join("；");
+    .join(t("quiz.answer.separator"));
 }
 
 function readStoredPreferences(): Preferences {
@@ -221,18 +227,19 @@ function FeedbackCard({
   grade: GradeResult;
   showUserAnswer?: boolean;
 }) {
+  const { t } = useI18n();
   const state = !grade.gradable
     ? "ungraded"
     : grade.correct
       ? "correct"
       : "wrong";
   const title = !grade.gradable
-    ? "本题暂不计分"
+    ? t("quiz.feedback.ungraded")
     : !grade.answered
-      ? "本题未作答"
+      ? t("quiz.feedback.unanswered")
       : grade.correct
-        ? "回答正确"
-        : "回答错误";
+        ? t("quiz.feedback.correct")
+        : t("quiz.feedback.wrong");
   const icon = !grade.gradable ? "!" : grade.correct ? "✓" : "×";
 
   return (
@@ -248,14 +255,22 @@ function FeedbackCard({
         <h3 className="feedback-title">{title}</h3>
         {showUserAnswer ? (
           <p className="feedback-answer">
-            你的答案：{userAnswerText(question, answer)}
+            {t("quiz.feedback.yourAnswer", {
+              answer: userAnswerText(question, answer, t),
+            })}
           </p>
         ) : null}
         <p className="feedback-answer">
-          正确答案：{correctAnswerText(question)}
+          {t("quiz.feedback.correctAnswer", {
+            answer: correctAnswerText(question, t),
+          })}
         </p>
         {question.sourceIssue ? (
-          <p className="feedback-note">{question.sourceIssue}，因此保留原题但不参与计分。</p>
+          <p className="feedback-note">
+            {t("quiz.feedback.sourceIssue", {
+              issue: question.sourceIssue,
+            })}
+          </p>
         ) : null}
       </div>
     </section>
@@ -277,6 +292,7 @@ function QuestionCard({
   onOption?: (optionId: string) => void;
   onText?: (value: string) => void;
 }) {
+  const { t } = useI18n();
   const grade = gradeQuestion(
     question,
     answer?.selectedIds ?? [],
@@ -290,30 +306,34 @@ function QuestionCard({
         <h2 className="question-stem">{question.stem}</h2>
         <p className="question-hint">
           {question.type === "multiple"
-            ? "可选择多个答案"
+            ? t("quiz.question.hint.multiple")
             : question.type === "fill"
-              ? "填写答案后确认"
-              : "请选择一个答案"}
+              ? t("quiz.question.hint.fill")
+              : t("quiz.question.hint.single")}
         </p>
 
         {question.type === "fill" ? (
           <div className="fill-wrap">
             <label className="fill-label" htmlFor={`fill-${question.id}`}>
-              你的答案
+              {t("quiz.question.yourAnswer")}
             </label>
             <textarea
               id={`fill-${question.id}`}
               className="fill-input"
               rows={2}
               value={answer?.text ?? ""}
-              placeholder="在这里输入答案"
+              placeholder={t("quiz.question.fillPlaceholder")}
               disabled={isLocked}
               onChange={(event) => onText?.(event.target.value)}
               data-testid="fill-answer"
             />
           </div>
         ) : (
-          <div className="option-list" role="group" aria-label="答案选项">
+          <div
+            className="option-list"
+            role="group"
+            aria-label={t("quiz.question.optionsAria")}
+          >
             {question.options.map((option, index) => {
               const selected = answer?.selectedIds.includes(option.id) ?? false;
               const correct = isLocked && question.answerKeys.includes(option.id);
@@ -332,7 +352,10 @@ function QuestionCard({
                   type="button"
                   className={`option-button ${stateClass}`}
                   aria-pressed={selected}
-                  aria-label={`${optionLabel(index)}，${option.text}`}
+                  aria-label={t("quiz.question.optionAria", {
+                    label: optionLabel(index),
+                    option: option.text,
+                  })}
                   disabled={isLocked}
                   onClick={() => onOption?.(option.id)}
                   data-testid={`option-${option.id}`}
@@ -378,6 +401,7 @@ function AnswerSheet({
   onClose: () => void;
   onSubmit?: () => void;
 }) {
+  const { t } = useI18n();
   const currentButtonRef = useRef<HTMLButtonElement | null>(null);
   const answeredCount = session.attempt.questions.reduce(
     (count, question) =>
@@ -399,11 +423,11 @@ function AnswerSheet({
         data-testid="answer-sheet"
       >
         <header className="sheet-header">
-          <h2 id="answer-sheet-title">答题卡</h2>
+          <h2 id="answer-sheet-title">{t("quiz.answerSheet.title")}</h2>
           <button
             type="button"
             className="sheet-close"
-            aria-label="关闭答题卡"
+            aria-label={t("quiz.answerSheet.closeAria")}
             onClick={onClose}
           >
             ×
@@ -413,17 +437,17 @@ function AnswerSheet({
           <div className="answer-legend">
             {review ? (
               <>
-                <span><i className="legend-dot correct" />正确</span>
-                <span><i className="legend-dot wrong" />错误或未答</span>
-                <span><i className="legend-dot excluded" />不计分</span>
+                <span><i className="legend-dot correct" />{t("quiz.status.correct")}</span>
+                <span><i className="legend-dot wrong" />{t("quiz.status.wrongOrUnanswered")}</span>
+                <span><i className="legend-dot excluded" />{t("quiz.status.excluded")}</span>
               </>
             ) : (
               <>
-                <span><i className="legend-dot answered" />已作答</span>
-                <span><i className="legend-dot" />未作答</span>
+                <span><i className="legend-dot answered" />{t("quiz.status.answered")}</span>
+                <span><i className="legend-dot" />{t("quiz.status.unanswered")}</span>
               </>
             )}
-            <span><i className="legend-dot current" />当前题</span>
+            <span><i className="legend-dot current" />{t("quiz.status.current")}</span>
           </div>
           <div className="answer-grid">
             {session.attempt.questions.map((question, index) => {
@@ -451,7 +475,12 @@ function AnswerSheet({
                   ref={index === currentIndex ? currentButtonRef : undefined}
                   type="button"
                   className={`answer-grid-button ${stateClass} ${index === currentIndex ? "current" : ""}`}
-                  aria-label={`第 ${index + 1} 题${answered ? "，已作答" : "，未作答"}`}
+                  aria-label={t("quiz.answerSheet.questionAria", {
+                    number: index + 1,
+                    status: answered
+                      ? t("quiz.status.answered")
+                      : t("quiz.status.unanswered"),
+                  })}
                   onClick={() => onSelect(index)}
                   data-testid={`answer-jump-${index + 1}`}
                 >
@@ -464,10 +493,11 @@ function AnswerSheet({
         {onSubmit ? (
           <footer className="sheet-submit-bar">
             <span>
-              已答 <strong>{answeredCount}</strong> / {session.attempt.questions.length}
+              {t("quiz.answerSheet.answeredLabel")} <strong>{answeredCount}</strong>{" "}
+              / {session.attempt.questions.length}
             </span>
             <button type="button" onClick={onSubmit}>
-              交卷
+              {t("quiz.action.submit")}
             </button>
           </footer>
         ) : null}
@@ -485,6 +515,7 @@ function SubmitDialog({
   onCancel: () => void;
   onSubmit: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="sheet-backdrop" role="presentation">
       <section
@@ -494,15 +525,15 @@ function SubmitDialog({
         aria-labelledby="submit-title"
         data-testid="submit-dialog"
       >
-        <h2 id="submit-title">确认交卷？</h2>
+        <h2 id="submit-title">{t("quiz.submit.title")}</h2>
         <p>
           {unanswered > 0
-            ? `还有 ${unanswered} 题未作答。交卷后将统一显示成绩与正确答案。`
-            : "所有题目均已作答。交卷后将统一显示成绩与正确答案。"}
+            ? t("quiz.submit.withUnanswered", { count: unanswered })
+            : t("quiz.submit.allAnswered")}
         </p>
         <div className="modal-actions">
           <button type="button" className="secondary-button" onClick={onCancel}>
-            继续答题
+            {t("quiz.submit.continue")}
           </button>
           <button
             type="button"
@@ -510,7 +541,7 @@ function SubmitDialog({
             onClick={onSubmit}
             data-testid="confirm-submit"
           >
-            确认交卷
+            {t("quiz.submit.confirm")}
           </button>
         </div>
       </section>
@@ -519,7 +550,7 @@ function SubmitDialog({
 }
 
 function OperationErrorDialog({
-  title = "操作失败",
+  title,
   message,
   onClose,
 }: {
@@ -527,6 +558,7 @@ function OperationErrorDialog({
   message: string;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="sheet-backdrop">
       <section
@@ -535,10 +567,12 @@ function OperationErrorDialog({
         aria-modal="true"
         aria-labelledby="operation-error-title"
       >
-        <h2 id="operation-error-title">{title}</h2>
+        <h2 id="operation-error-title">
+          {title ?? t("quiz.error.operationTitle")}
+        </h2>
         <p>{message}</p>
         <button type="button" className="primary-button" onClick={onClose}>
-          知道了
+          {t("quiz.action.dismiss")}
         </button>
       </section>
     </div>
@@ -546,6 +580,9 @@ function OperationErrorDialog({
 }
 
 export function QuizApp() {
+  const { locale, t } = useI18n();
+  const localeRef = useRef(locale);
+  const tRef = useRef(t);
   const [screen, setScreen] = useState<Screen>("home");
   const [preferences, setPreferences] =
     useState<Preferences>(DEFAULT_PREFERENCES);
@@ -584,6 +621,8 @@ export function QuizApp() {
   const [aiIntent, setAiIntent] = useState("");
   const [aiIntentSummary, setAiIntentSummary] =
     useState<AiIntentSummary | null>(null);
+  const [aiIntentBusy, setAiIntentBusy] = useState(false);
+  const [aiIntentError, setAiIntentError] = useState<string | null>(null);
   const [aiCandidate, setAiCandidate] =
     useState<AiPartitionCandidate | null>(null);
   const [aiProcessingError, setAiProcessingError] =
@@ -594,6 +633,8 @@ export function QuizApp() {
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false);
   const [settingsReturn, setSettingsReturn] =
     useState<"home" | "bank">("home");
+  const aiIntentRunIdRef = useRef(0);
+  const aiIntentAbortControllerRef = useRef<AbortController | null>(null);
   const aiRunIdRef = useRef(0);
   const aiAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -617,6 +658,11 @@ export function QuizApp() {
   const aiConfigured = Boolean(aiConfiguration);
 
   useEffect(() => {
+    localeRef.current = locale;
+    tRef.current = t;
+  }, [locale, t]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function hydrateLocalLibrary() {
@@ -634,9 +680,10 @@ export function QuizApp() {
         storedAiConfiguration = await loadAiConfiguration(aiApiKeyStore);
       } catch (error) {
         aiConfigurationLoadError =
-          error instanceof Error
+          getCoreErrorMessage(localeRef.current, error) ??
+          (error instanceof Error
             ? error.message
-            : "无法读取 AI 配置，请重新保存。";
+            : tRef.current("quiz.error.aiConfigurationLoad"));
       }
 
       if (cancelled) {
@@ -746,10 +793,10 @@ export function QuizApp() {
       ? Math.round((answeredCount / total) * 100)
       : 0;
     const label = session.attempt.mode === "exam"
-      ? "模拟考试"
+      ? t("quiz.mode.exam")
       : session.attempt.prefs.shuffleQuestions
-        ? "随机练习"
-        : "顺序练习";
+        ? t("quiz.mode.randomPractice")
+        : t("quiz.mode.sequentialPractice");
 
     return {
       answered: answeredCount,
@@ -759,7 +806,7 @@ export function QuizApp() {
       submitted: session.submitted,
       score: score?.percentage,
     };
-  }, [answeredCount, score?.percentage, session]);
+  }, [answeredCount, score?.percentage, session, t]);
 
   const bankCards = useMemo(
     () =>
@@ -781,10 +828,10 @@ export function QuizApp() {
               percentage,
               label:
                 bankSession.attempt.mode === "exam"
-                  ? "模拟考试"
+                  ? t("quiz.mode.exam")
                   : bankSession.attempt.prefs.shuffleQuestions
-                    ? "随机练习"
-                    : "顺序练习",
+                    ? t("quiz.mode.randomPractice")
+                    : t("quiz.mode.sequentialPractice"),
               submitted: bankSession.submitted,
               score: bankSession.submitted
                 ? scoreAttempt(
@@ -803,7 +850,7 @@ export function QuizApp() {
           session: summary,
         };
       }),
-    [banks, sessions],
+    [banks, sessions, t],
   );
 
   const setSession = (
@@ -834,7 +881,7 @@ export function QuizApp() {
   const allScopeForBank = (bank: QuizBank): QuestionScope => ({
     kind: "all",
     id: "all",
-    name: "全部题目",
+    name: t("quiz.scope.allQuestions"),
     questionIds: bank.questions.map((question) => question.id),
   });
 
@@ -1117,7 +1164,7 @@ export function QuizApp() {
     }
     if (!libraryStorageReady) {
       setImportError(
-        "当前设备无法打开本地题库存储，暂不能导入；内置题库仍可继续使用。",
+        t("quiz.error.localBankStorageUnavailable"),
       );
       return;
     }
@@ -1135,7 +1182,9 @@ export function QuizApp() {
     } catch (error) {
       setDuplicateBankName(null);
       setImportError(
-        error instanceof Error ? error.message : "文件解析失败",
+        error instanceof Error
+          ? error.message
+          : t("quiz.error.fileParse"),
       );
     } finally {
       setImportBusy(false);
@@ -1169,7 +1218,9 @@ export function QuizApp() {
       setScreen("bank");
     } catch (error) {
       setImportError(
-        error instanceof Error ? error.message : "题库保存失败",
+        error instanceof Error
+          ? error.message
+          : t("quiz.error.bankSave"),
       );
     } finally {
       setImportBusy(false);
@@ -1219,7 +1270,9 @@ export function QuizApp() {
       setScreen("partitions");
     } catch (error) {
       setOperationError(
-        error instanceof Error ? error.message : "分区保存失败",
+        error instanceof Error
+          ? error.message
+          : t("quiz.error.partitionSave"),
       );
     }
   };
@@ -1263,7 +1316,9 @@ export function QuizApp() {
       setRenameBankOpen(false);
     } catch (error) {
       setOperationError(
-        error instanceof Error ? error.message : "题库重命名失败",
+        error instanceof Error
+          ? error.message
+          : t("quiz.error.bankRename"),
       );
     } finally {
       setOperationBusy(false);
@@ -1309,7 +1364,9 @@ export function QuizApp() {
       setScreen("home");
     } catch (error) {
       setOperationError(
-        error instanceof Error ? error.message : "题库删除失败",
+        error instanceof Error
+          ? error.message
+          : t("quiz.error.bankDelete"),
       );
     } finally {
       setOperationBusy(false);
@@ -1322,7 +1379,7 @@ export function QuizApp() {
     }
     setAiConfigAction("testing");
     setAiConfigStatus("testing");
-    setAiConfigStatusMessage("正在连接模型服务…");
+    setAiConfigStatusMessage(t("quiz.ai.connection.testing"));
     try {
       const testedSettings = validateAiSettings({
         apiBaseUrl: value.baseUrl,
@@ -1338,12 +1395,18 @@ export function QuizApp() {
       const result = await testAiConnection(client);
       setAiConfigStatus("connected");
       setAiConfigStatusMessage(
-        `连接正常：${testedSettings.model}（${result.latencyMs} 毫秒）。当前表单尚未保存，保存后才会用于 AI 分区。`,
+        t("quiz.ai.connection.success", {
+          model: testedSettings.model,
+          latencyMs: result.latencyMs,
+        }),
       );
     } catch (error) {
       setAiConfigStatus("error");
       setAiConfigStatusMessage(
-        error instanceof Error ? error.message : "AI 连接测试失败",
+        getCoreErrorMessage(locale, error) ??
+          (error instanceof Error
+            ? error.message
+            : t("quiz.error.aiConnectionTest")),
       );
     } finally {
       setAiConfigAction("idle");
@@ -1368,15 +1431,18 @@ export function QuizApp() {
       );
       const saved = await loadAiConfiguration(aiApiKeyStore);
       if (!saved) {
-        throw new Error("AI 配置保存后无法读取，请重试。");
+        throw new Error(t("quiz.error.aiConfigurationUnreadable"));
       }
       setAiConfiguration(saved);
       setAiConfigStatus("saved");
-      setAiConfigStatusMessage("配置已保存在当前设备。");
+      setAiConfigStatusMessage(t("quiz.ai.configuration.saved"));
     } catch (error) {
       setAiConfigStatus("error");
       setAiConfigStatusMessage(
-        error instanceof Error ? error.message : "AI 配置保存失败",
+        getCoreErrorMessage(locale, error) ??
+          (error instanceof Error
+            ? error.message
+            : t("quiz.error.aiConfigurationSave")),
       );
     } finally {
       setAiConfigAction("idle");
@@ -1394,36 +1460,85 @@ export function QuizApp() {
       setAiConfiguration(null);
       setAiConfigStatus("unconfigured");
       setAiConfigStatusMessage(
-        "接口地址、模型名称和 API Key 已从当前设备移除。",
+        t("quiz.ai.configuration.cleared"),
       );
     } catch (error) {
       setAiConfigStatus("error");
       setAiConfigStatusMessage(
-        error instanceof Error ? error.message : "AI 配置清除失败",
+        getCoreErrorMessage(locale, error) ??
+          (error instanceof Error
+            ? error.message
+            : t("quiz.error.aiConfigurationClear")),
       );
     } finally {
       setAiConfigAction("idle");
     }
   };
 
-  const continueAiPartitionIntent = (intent: string) => {
+  const continueAiPartitionIntent = async (intent: string) => {
+    if (aiIntentBusy) {
+      return;
+    }
+
     const normalizedIntent = intent.trim();
-    const summary = Array.from(normalizedIntent).slice(0, 160).join("");
     setAiIntent(normalizedIntent);
-    setAiIntentSummary({
-      bankId: activeBank.id,
-      intent: normalizedIntent,
-      summary,
-      suggestedPartitionName: "AI 分区",
-    });
+    setAiIntentSummary(null);
     setAiCandidate(null);
+    setAiIntentError(null);
     setAiProcessingError(null);
-    setScreen("aiConfirm");
+
+    if (!aiConfiguration) {
+      setAiIntentError(t("quiz.error.aiConfigurationRequired"));
+      return;
+    }
+
+    const runId = aiIntentRunIdRef.current + 1;
+    aiIntentRunIdRef.current = runId;
+    aiIntentAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    aiIntentAbortControllerRef.current = abortController;
+    const bank = activeBank;
+    setAiIntentBusy(true);
+
+    try {
+      const client = createOpenAiCompatibleClient(aiConfiguration);
+      const summary = await summarizePartitionIntent(
+        client,
+        bank,
+        normalizedIntent,
+        { locale, signal: abortController.signal },
+      );
+      if (aiIntentRunIdRef.current !== runId) {
+        return;
+      }
+      setAiIntentSummary(summary);
+      setScreen("aiConfirm");
+    } catch (error) {
+      if (
+        aiIntentRunIdRef.current !== runId ||
+        abortController.signal.aborted
+      ) {
+        return;
+      }
+      setAiIntentError(
+        getCoreErrorMessage(locale, error) ??
+          (error instanceof Error
+            ? error.message
+            : t("quiz.error.aiIntentSummary")),
+      );
+    } finally {
+      if (aiIntentAbortControllerRef.current === abortController) {
+        aiIntentAbortControllerRef.current = null;
+      }
+      if (aiIntentRunIdRef.current === runId) {
+        setAiIntentBusy(false);
+      }
+    }
   };
 
   const runAiPartition = async () => {
     if (!aiConfiguration || !aiIntentSummary) {
-      setAiProcessingError("请先完成模型 API 配置。");
+      setAiProcessingError(t("quiz.error.aiConfigurationRequired"));
       setScreen("aiProcessing");
       return;
     }
@@ -1442,7 +1557,7 @@ export function QuizApp() {
         client,
         bank,
         aiIntentSummary,
-        { signal: abortController.signal },
+        { locale, signal: abortController.signal },
       );
       if (aiRunIdRef.current !== runId) {
         return;
@@ -1457,7 +1572,10 @@ export function QuizApp() {
         return;
       }
       setAiProcessingError(
-        error instanceof Error ? error.message : "AI 分区生成失败",
+        getCoreErrorMessage(locale, error) ??
+          (error instanceof Error
+            ? error.message
+            : t("quiz.error.aiPartitionGeneration")),
       );
     } finally {
       if (aiAbortControllerRef.current === abortController) {
@@ -1527,7 +1645,9 @@ export function QuizApp() {
             duplicateBankName={duplicateBankName ?? undefined}
             issueSummary={
               importDraft.importIssues.length > 0
-                ? `发现 ${importDraft.importIssues.length} 项结构异常；原题已保留，无法可靠判分的题目不计分。`
+                ? t("quiz.import.issueSummary", {
+                    count: importDraft.importIssues.length,
+                  })
                 : undefined
             }
             onSave={(bankName) => void confirmImport(bankName)}
@@ -1542,8 +1662,8 @@ export function QuizApp() {
         {importBusy && !importDraft ? (
           <div className="sheet-backdrop">
             <section className="modal-card" role="status">
-              <h2>正在读取题库</h2>
-              <p>正在本机解析 Excel 文件，请稍候。</p>
+              <h2>{t("quiz.import.readingTitle")}</h2>
+              <p>{t("quiz.import.readingDescription")}</p>
             </section>
           </div>
         ) : null}
@@ -1555,14 +1675,14 @@ export function QuizApp() {
               aria-modal="true"
               aria-labelledby="import-error-title"
             >
-              <h2 id="import-error-title">导入失败</h2>
+              <h2 id="import-error-title">{t("quiz.import.errorTitle")}</h2>
               <p>{importError}</p>
               <button
                 type="button"
                 className="primary-button"
                 onClick={() => setImportError(null)}
               >
-                知道了
+                {t("quiz.action.dismiss")}
               </button>
             </section>
           </div>
@@ -1735,6 +1855,8 @@ export function QuizApp() {
             setEditingPartitionId(null);
             setAiIntent("");
             setAiIntentSummary(null);
+            setAiIntentBusy(false);
+            setAiIntentError(null);
             setAiCandidate(null);
             setAiProcessingError(null);
             setScreen("aiIntent");
@@ -1767,13 +1889,15 @@ export function QuizApp() {
     return (
       <>
         <PartitionEditorScreen
-          title={editingPartition ? "编辑自建分区" : "新建自建分区"}
+          title={editingPartition
+            ? t("quiz.partition.editTitle")
+            : t("quiz.partition.createTitle")}
           initialName={editingPartition?.name}
           initialSelectedQuestionIds={editingPartition?.questionIds}
           questions={activeBank.questions.map((question) => ({
             id: question.id,
             number: question.number,
-            typeLabel: typeLabels[question.type],
+            typeLabel: questionTypeLabel(question.type, t),
             stem: question.stem,
           }))}
           onCancel={() => {
@@ -1844,7 +1968,7 @@ export function QuizApp() {
     const wrongScope: QuestionScope = {
       kind: "wrong",
       id: "wrong",
-      name: "错题专项",
+      name: t("quiz.scope.wrongQuestions"),
       questionIds: wrongQuestions.map((question) => question.id),
     };
     return (
@@ -1852,7 +1976,7 @@ export function QuizApp() {
         questions={wrongQuestions.map((question) => ({
           id: question.id,
           number: question.number,
-          typeLabel: typeLabels[question.type],
+          typeLabel: questionTypeLabel(question.type, t),
           stem: question.stem,
         }))}
         onBack={() => setScreen("bank")}
@@ -1907,12 +2031,12 @@ export function QuizApp() {
         onOpenLibrary={() => setScreen("home")}
         aiStatusLabel={
           aiConfiguration
-            ? "已配置"
+            ? t("quiz.ai.status.configured")
             : aiConfigStatus === "testing"
-              ? "测试中"
+              ? t("quiz.ai.status.testing")
               : aiConfigStatus === "error"
-                ? "配置异常"
-                : "未配置"
+                ? t("quiz.ai.status.error")
+                : t("quiz.ai.status.unconfigured")
         }
         onOpenModelApi={() => {
           setAiConfigReturn("settings");
@@ -1953,8 +2077,8 @@ export function QuizApp() {
             setAiConfigStatus(aiConfiguration ? "saved" : "unconfigured");
             setAiConfigStatusMessage(
               aiConfiguration
-                ? "当前表单已更改；已保存配置仍在使用，请重新测试后再保存。"
-                : "填写完成后请重新测试连接。",
+                ? t("quiz.ai.configuration.formChangedSaved")
+                : t("quiz.ai.configuration.formChangedUnsaved"),
             );
           }
         }}
@@ -1969,22 +2093,38 @@ export function QuizApp() {
         bankName={activeBank.name}
         initialIntent={aiIntent}
         isConfigured={aiConfigured}
-        onBack={() => setScreen("partitions")}
+        isBusy={aiIntentBusy}
+        errorMessage={aiIntentError ?? undefined}
+        onBack={() => {
+          aiIntentAbortControllerRef.current?.abort();
+          aiIntentAbortControllerRef.current = null;
+          aiIntentRunIdRef.current += 1;
+          setAiIntentBusy(false);
+          setAiIntentError(null);
+          setScreen("partitions");
+        }}
         onOpenSettings={() => {
+          aiIntentAbortControllerRef.current?.abort();
+          aiIntentAbortControllerRef.current = null;
+          aiIntentRunIdRef.current += 1;
+          setAiIntentBusy(false);
+          setAiIntentError(null);
           setAiConfigReturn("aiIntent");
           setScreen("modelApi");
         }}
-        onContinue={continueAiPartitionIntent}
+        onContinue={(intent) => void continueAiPartitionIntent(intent)}
       />
     );
   }
 
-  if (screen === "aiConfirm") {
+  if (screen === "aiConfirm" && aiIntentSummary) {
     return (
       <AiPartitionConfirmScreen
         bankName={activeBank.name}
         questionCount={activeBank.questions.length}
         intent={aiIntent}
+        summary={aiIntentSummary.summary}
+        suggestedPartitionName={aiIntentSummary.suggestedPartitionName}
         onBack={() => setScreen("aiIntent")}
         onStart={() => void runAiPartition()}
       />
@@ -2019,13 +2159,14 @@ export function QuizApp() {
           questions={activeBank.questions.map((question) => ({
             id: question.id,
             number: question.number,
-            typeLabel: typeLabels[question.type],
+            typeLabel: questionTypeLabel(question.type, t),
             stem: question.stem,
           }))}
           initialSelectedQuestionIds={aiCandidate.questionIds}
-          note={`${aiCandidate.reason} 参考置信度 ${Math.round(
-            aiCandidate.confidence * 100,
-          )}%。`}
+          note={t("quiz.ai.reviewNote", {
+            reason: aiCandidate.reason,
+            confidence: Math.round(aiCandidate.confidence * 100),
+          })}
           onCancel={() => {
             setAiCandidate(null);
             setScreen("partitions");
@@ -2046,7 +2187,7 @@ export function QuizApp() {
   if (!session) {
     return (
       <main className="app-shell">
-        <div className="empty-state">正在恢复题目…</div>
+        <div className="empty-state">{t("quiz.restore.loading")}</div>
       </main>
     );
   }
@@ -2065,10 +2206,12 @@ export function QuizApp() {
               className="topbar-button"
               onClick={() => setScreen("bank")}
             >
-              题库
+              {t("quiz.navigation.library")}
             </button>
             <div className="topbar-title">
-              {session.attempt.mode === "exam" ? "考试结果" : "练习完成"}
+              {session.attempt.mode === "exam"
+                ? t("quiz.result.examTitle")
+                : t("quiz.result.practiceTitle")}
             </div>
             {session.attempt.mode === "exam" ? (
               <button
@@ -2076,7 +2219,7 @@ export function QuizApp() {
                 className="topbar-button"
                 onClick={() => setAnswerSheetOpen(true)}
               >
-                答题卡
+                {t("quiz.answerSheet.title")}
               </button>
             ) : (
               <span aria-hidden="true" />
@@ -2087,23 +2230,25 @@ export function QuizApp() {
         <div className="result-content">
           <section className="score-card" data-testid="score-card">
             <p className="score-eyebrow">
-              {session.attempt.mode === "exam" ? "本次模拟考试" : "本次练习"}
+              {session.attempt.mode === "exam"
+                ? t("quiz.result.examEyebrow")
+                : t("quiz.result.practiceEyebrow")}
             </p>
             <p className="score-number">
-              {score?.percentage ?? 0}<span>分</span>
+              {score?.percentage ?? 0}<span>{t("quiz.result.points")}</span>
             </p>
             <div className="score-stats">
               <div className="score-stat">
                 <strong>{score?.correct ?? 0}</strong>
-                <span>正确</span>
+                <span>{t("quiz.status.correct")}</span>
               </div>
               <div className="score-stat">
                 <strong>{(score?.incorrect ?? 0) + (score?.unanswered ?? 0)}</strong>
-                <span>错误 / 未答</span>
+                <span>{t("quiz.status.wrongOrUnansweredSlash")}</span>
               </div>
               <div className="score-stat">
                 <strong>{score?.excluded ?? 0}</strong>
-                <span>不计分</span>
+                <span>{t("quiz.status.excluded")}</span>
               </div>
             </div>
           </section>
@@ -2121,27 +2266,35 @@ export function QuizApp() {
                 )
               }
             >
-              {session.attempt.mode === "exam" ? "再考一次" : "再练一遍"}
+              {session.attempt.mode === "exam"
+                ? t("quiz.result.retryExam")
+                : t("quiz.result.retryPractice")}
             </button>
             <button
               type="button"
               className="secondary-button"
               onClick={returnToBank}
             >
-              返回题库
+              {t("quiz.navigation.backToLibrary")}
             </button>
           </div>
 
           {session.attempt.mode === "exam" ? (
             <section aria-labelledby="review-title">
               <div className="review-heading">
-                <h2 id="review-title">逐题核对答案</h2>
+                <h2 id="review-title">{t("quiz.result.reviewTitle")}</h2>
                 <span>{session.reviewIndex + 1} / {reviewedCount}</span>
               </div>
               <div className="question-meta">
                 <div className="question-badges">
-                  <span className="question-badge">{typeLabels[reviewQuestion.type]}</span>
-                  <span className="question-badge neutral">原题第 {reviewQuestion.number} 题</span>
+                  <span className="question-badge">
+                    {questionTypeLabel(reviewQuestion.type, t)}
+                  </span>
+                  <span className="question-badge neutral">
+                    {t("quiz.question.originalNumber", {
+                      number: reviewQuestion.number,
+                    })}
+                  </span>
                 </div>
               </div>
               <QuestionCard
@@ -2162,7 +2315,7 @@ export function QuizApp() {
                         : current,
                     )}
                 >
-                  上一题
+                  {t("quiz.action.previousQuestion")}
                 </button>
                 <button
                   type="button"
@@ -2175,7 +2328,7 @@ export function QuizApp() {
                         : current,
                     )}
                 >
-                  下一题
+                  {t("quiz.action.nextQuestion")}
                 </button>
               </div>
             </section>
@@ -2219,14 +2372,14 @@ export function QuizApp() {
             className="topbar-button"
             onClick={() => setScreen("bank")}
           >
-            题库
+            {t("quiz.navigation.library")}
           </button>
           <div className="topbar-title">
             {isPractice
               ? session.attempt.prefs.shuffleQuestions
-                ? "随机练习"
-                : "顺序练习"
-              : "模拟考试"}
+                ? t("quiz.mode.randomPractice")
+                : t("quiz.mode.sequentialPractice")
+              : t("quiz.mode.exam")}
           </div>
           <button
             type="button"
@@ -2234,7 +2387,7 @@ export function QuizApp() {
             onClick={() => setAnswerSheetOpen(true)}
             data-testid="open-answer-sheet"
           >
-            答题卡
+            {t("quiz.answerSheet.title")}
           </button>
         </div>
         <div className="progress-line" aria-hidden="true">
@@ -2250,9 +2403,13 @@ export function QuizApp() {
       <div className="quiz-content">
         <div className="question-meta">
           <div className="question-badges">
-            <span className="question-badge">{typeLabels[currentQuestion.type]}</span>
+            <span className="question-badge">
+              {questionTypeLabel(currentQuestion.type, t)}
+            </span>
             <span className="question-badge neutral">
-              原题第 {currentQuestion.number} 题
+              {t("quiz.question.originalNumber", {
+                number: currentQuestion.number,
+              })}
             </span>
           </div>
           <span className="question-position">
@@ -2280,7 +2437,7 @@ export function QuizApp() {
                 current ? { ...current, cursor: current.cursor - 1 } : current,
               )}
           >
-            上一题
+            {t("quiz.action.previousQuestion")}
           </button>
 
           {isPractice ? (
@@ -2291,7 +2448,9 @@ export function QuizApp() {
                 onClick={goNextPractice}
                 data-testid="practice-next"
               >
-                {isLast ? "完成练习" : "下一题"}
+                {isLast
+                  ? t("quiz.action.finishPractice")
+                  : t("quiz.action.nextQuestion")}
               </button>
             ) : currentQuestion.type === "multiple" || currentQuestion.type === "fill" ? (
               <button
@@ -2301,11 +2460,11 @@ export function QuizApp() {
                 onClick={confirmPracticeAnswer}
                 data-testid="confirm-practice-answer"
               >
-                确认答案
+                {t("quiz.action.confirmAnswer")}
               </button>
             ) : (
               <button type="button" className="primary-button" disabled>
-                请选择答案
+                {t("quiz.action.selectAnswer")}
               </button>
             )
           ) : isLast ? (
@@ -2315,7 +2474,7 @@ export function QuizApp() {
               onClick={() => setSubmitDialogOpen(true)}
               data-testid="submit-exam"
             >
-              交卷
+              {t("quiz.action.submit")}
             </button>
           ) : (
             <button
@@ -2327,7 +2486,7 @@ export function QuizApp() {
                 )}
               data-testid="exam-next"
             >
-              下一题
+              {t("quiz.action.nextQuestion")}
             </button>
           )}
         </div>

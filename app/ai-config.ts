@@ -36,8 +36,9 @@ export interface StorageLike {
 
 /**
  * Android should inject a KeyStore implementation backed by the platform
- * keystore. The web-preview implementation below is intentionally marked as
- * insecure so the UI can disclose that limitation.
+ * keystore. The web-preview implementation below uses sessionStorage and is
+ * intentionally marked as less secure so the UI can disclose that the key is
+ * available to same-origin scripts for the current browser session.
  */
 export interface AiApiKeyStore {
   readonly security: "secure" | "web-preview" | "memory";
@@ -237,6 +238,16 @@ function getDefaultStorage(): StorageLike {
   return globalThis.localStorage;
 }
 
+function getDefaultWebPreviewKeyStorage(): StorageLike {
+  if (!globalThis.sessionStorage) {
+    throw new AiConfigurationError(
+      "key-storage-unavailable",
+      "当前环境无法为本次会话保存 API Key。",
+    );
+  }
+  return globalThis.sessionStorage;
+}
+
 export function readAiSettings(
   storage: StorageLike = getDefaultStorage(),
 ): AiSettings | null {
@@ -307,13 +318,25 @@ export function removeAiSettings(
 }
 
 export function createWebPreviewApiKeyStore(
-  storage: StorageLike = getDefaultStorage(),
+  storage?: StorageLike,
 ): AiApiKeyStore {
+  const usingDefaultSessionStorage = storage === undefined;
+  const keyStorage = storage ?? getDefaultWebPreviewKeyStorage();
+  if (usingDefaultSessionStorage) {
+    // v0.1 used localStorage for the web-preview key. Do not migrate that
+    // persistent secret into the session; remove it and require re-entry.
+    try {
+      globalThis.localStorage?.removeItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
+    } catch {
+      // A blocked localStorage must not prevent session-only storage working.
+    }
+  }
+
   return {
     security: "web-preview",
     async getApiKey() {
       try {
-        return storage.getItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
+        return keyStorage.getItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
       } catch {
         throw new AiConfigurationError(
           "key-storage-unavailable",
@@ -324,7 +347,7 @@ export function createWebPreviewApiKeyStore(
     async setApiKey(value: string) {
       const apiKey = normalizeAiApiKey(value);
       try {
-        storage.setItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY, apiKey);
+        keyStorage.setItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY, apiKey);
       } catch {
         throw new AiConfigurationError(
           "key-storage-unavailable",
@@ -334,7 +357,7 @@ export function createWebPreviewApiKeyStore(
     },
     async removeApiKey() {
       try {
-        storage.removeItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
+        keyStorage.removeItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
       } catch {
         throw new AiConfigurationError(
           "key-storage-unavailable",

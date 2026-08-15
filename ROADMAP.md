@@ -2,13 +2,13 @@
 
 The roadmap records intended work, not a promise of delivery. Completed behavior is documented in the README and release notes.
 
-## v0.2 — Bilingual foundation
+## Completed in v0.2 — Bilingual foundation
 
 - Chinese and English UI with a saved language preference.
 - English Excel header and question-type aliases.
 - Localized AI output-language instruction and key error messages.
 - Two Android language variants built from the same source.
-- Narrow-screen checks for longer English labels.
+- Narrow-screen handling for longer English labels.
 
 ## v0.3 — Classification quality
 

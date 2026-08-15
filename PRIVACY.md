@@ -8,7 +8,7 @@ Depending on the platform, QuizDeck stores imported question banks, answer sessi
 
 On Android, the user-provided API key is encrypted before storage with an AES-GCM key generated and protected by Android Keystore. Backup rules exclude the encrypted API-key preference file. Removing the app or clearing its data removes locally stored QuizDeck data according to the operating system's behavior.
 
-The web preview cannot provide Android Keystore protection. Its API key is stored in browser local storage so that the preview can test compatibility. Do not use a high-value production credential in a shared browser profile. Prefer a short-lived, restricted key or the Android build.
+The web preview cannot provide Android Keystore protection. Its API key is kept in browser session storage and is removed when that browser session is cleared; QuizDeck also removes its legacy persistent key entry. Do not use a high-value production credential in a shared browser profile. Prefer a short-lived, restricted key or the Android build.
 
 ## When data leaves the device
 

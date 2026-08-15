@@ -7,13 +7,30 @@ android {
         applicationId "app.quizdeck.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode 2
+        versionName "0.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    buildFeatures {
+        buildConfig = true
+    }
+    flavorDimensions += "language"
+    productFlavors {
+        zh {
+            dimension "language"
+            versionNameSuffix "-zh"
+            buildConfigField "String", "QUIZDECK_DEFAULT_LOCALE", '"zh-CN"'
+        }
+        en {
+            dimension "language"
+            applicationIdSuffix ".en"
+            versionNameSuffix "-en"
+            buildConfigField "String", "QUIZDECK_DEFAULT_LOCALE", '"en-US"'
         }
     }
     buildTypes {
