@@ -1,0 +1,268 @@
+{
+  "version": "quizdeck-demo-1",
+  "sourceSheet": "Demo",
+  "questionCount": 16,
+  "gradableCount": 16,
+  "questions": [
+    {
+      "id": "demo-q-1",
+      "number": 1,
+      "sourceRow": 2,
+      "type": "single",
+      "stem": "QuizDeck 支持直接导入哪类题库文件？ / Which question-bank file can QuizDeck import directly?",
+      "options": [
+        { "id": "A", "text": "Excel（.xls / .xlsx）" },
+        { "id": "B", "text": "JPEG 图片 / JPEG image" },
+        { "id": "C", "text": "MP3 音频 / MP3 audio" },
+        { "id": "D", "text": "ZIP 压缩包 / ZIP archive" }
+      ],
+      "answerKeys": ["A"],
+      "answerText": "A",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-2",
+      "number": 2,
+      "sourceRow": 3,
+      "type": "single",
+      "stem": "哪种模式会在作答后立即显示正确答案？ / Which mode reveals the correct answer immediately?",
+      "options": [
+        { "id": "A", "text": "练习模式 / Practice mode" },
+        { "id": "B", "text": "模拟考试 / Mock exam" },
+        { "id": "C", "text": "导入预览 / Import preview" },
+        { "id": "D", "text": "设置页面 / Settings" }
+      ],
+      "answerKeys": ["A"],
+      "answerText": "A",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-3",
+      "number": 3,
+      "sourceRow": 4,
+      "type": "single",
+      "stem": "保护企业账号最有效的日常做法是？ / Which daily practice best protects an enterprise account?",
+      "options": [
+        { "id": "A", "text": "多人共用同一密码 / Share one password" },
+        { "id": "B", "text": "使用唯一强密码并启用多因素认证 / Use a unique strong password and MFA" },
+        { "id": "C", "text": "把密码写在公开文档中 / Put the password in a public document" },
+        { "id": "D", "text": "关闭登录提醒 / Disable sign-in alerts" }
+      ],
+      "answerKeys": ["B"],
+      "answerText": "B",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-4",
+      "number": 4,
+      "sourceRow": 5,
+      "type": "single",
+      "stem": "发现制度内容与实际流程冲突时，最合适的做法是？ / What should you do when a policy conflicts with the actual process?",
+      "options": [
+        { "id": "A", "text": "自行修改制度 / Edit the policy yourself" },
+        { "id": "B", "text": "忽略冲突继续操作 / Ignore the conflict" },
+        { "id": "C", "text": "停止高风险操作并按正式渠道反馈 / Pause risky work and report through the official channel" },
+        { "id": "D", "text": "只在私人群聊讨论 / Discuss only in a private chat" }
+      ],
+      "answerKeys": ["C"],
+      "answerText": "C",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-5",
+      "number": 5,
+      "sourceRow": 6,
+      "type": "multiple",
+      "stem": "安全处理内部资料应采取哪些措施？ / Which measures help protect internal information?",
+      "options": [
+        { "id": "A", "text": "按最小权限授权 / Apply least privilege" },
+        { "id": "B", "text": "确认接收方身份 / Verify the recipient" },
+        { "id": "C", "text": "使用获批的存储与传输方式 / Use approved storage and transfer methods" },
+        { "id": "D", "text": "把访问密钥提交到公开仓库 / Commit access keys to a public repository" }
+      ],
+      "answerKeys": ["A", "B", "C"],
+      "answerText": "ABC",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-6",
+      "number": 6,
+      "sourceRow": 7,
+      "type": "multiple",
+      "stem": "有效的岗位学习计划通常包括哪些做法？ / What usually belongs in an effective role-training plan?",
+      "options": [
+        { "id": "A", "text": "分散复习 / Spaced review" },
+        { "id": "B", "text": "记录并重做错题 / Record and retry mistakes" },
+        { "id": "C", "text": "结合岗位场景练习 / Practice with role-based scenarios" },
+        { "id": "D", "text": "只看答案不作答 / Read answers without attempting questions" }
+      ],
+      "answerKeys": ["A", "B", "C"],
+      "answerText": "ABC",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-7",
+      "number": 7,
+      "sourceRow": 8,
+      "type": "multiple",
+      "stem": "AI 候选分类保存前应检查哪些内容？ / What should be checked before saving an AI-generated partition?",
+      "options": [
+        { "id": "A", "text": "题目是否属于当前题库 / Questions belong to the current bank" },
+        { "id": "B", "text": "是否存在重复题目 ID / Duplicate question IDs" },
+        { "id": "C", "text": "分区名称和理由是否合理 / Partition name and reasons are reasonable" },
+        { "id": "D", "text": "是否经过人工确认 / A person has reviewed it" }
+      ],
+      "answerKeys": ["A", "B", "C", "D"],
+      "answerText": "ABCD",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-8",
+      "number": 8,
+      "sourceRow": 9,
+      "type": "multiple",
+      "stem": "发生异常事件时，通用的初步处置原则包括？ / Which general principles apply to an incident?",
+      "options": [
+        { "id": "A", "text": "先确保人员安全 / Protect people first" },
+        { "id": "B", "text": "按预案报告 / Report according to the response plan" },
+        { "id": "C", "text": "保留必要记录 / Preserve necessary records" },
+        { "id": "D", "text": "未经授权对外发布 / Publish externally without authorization" }
+      ],
+      "answerKeys": ["A", "B", "C"],
+      "answerText": "ABC",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-9",
+      "number": 9,
+      "sourceRow": 10,
+      "type": "judge",
+      "stem": "普通导题和离线答题必须连接 AI 服务。 / Importing and offline practice always require an AI service.",
+      "options": [
+        { "id": "A", "text": "正确 / True" },
+        { "id": "B", "text": "错误 / False" }
+      ],
+      "answerKeys": ["B"],
+      "answerText": "错误 / False",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-10",
+      "number": 10,
+      "sourceRow": 11,
+      "type": "judge",
+      "stem": "随机选项顺序不应改变题目的正确答案。 / Shuffling options must not change the correct answer.",
+      "options": [
+        { "id": "A", "text": "正确 / True" },
+        { "id": "B", "text": "错误 / False" }
+      ],
+      "answerKeys": ["A"],
+      "answerText": "正确 / True",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-11",
+      "number": 11,
+      "sourceRow": 12,
+      "type": "judge",
+      "stem": "AI 的候选分类应在人工确认后才保存。 / AI candidate partitions should be saved only after human review.",
+      "options": [
+        { "id": "A", "text": "正确 / True" },
+        { "id": "B", "text": "错误 / False" }
+      ],
+      "answerKeys": ["A"],
+      "answerText": "正确 / True",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-12",
+      "number": 12,
+      "sourceRow": 13,
+      "type": "judge",
+      "stem": "使用外部云端模型时，题目内容仍可能离开企业内网。 / With an external cloud model, question content may leave the enterprise network.",
+      "options": [
+        { "id": "A", "text": "正确 / True" },
+        { "id": "B", "text": "错误 / False" }
+      ],
+      "answerKeys": ["A"],
+      "answerText": "正确 / True",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-13",
+      "number": 13,
+      "sourceRow": 14,
+      "type": "fill",
+      "stem": "用于唯一标识一道题且不应重复的字段通常称为 ____。 / A unique question identifier is commonly called an ____.",
+      "options": [],
+      "answerKeys": [],
+      "answerText": "ID",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-14",
+      "number": 14,
+      "sourceRow": 15,
+      "type": "fill",
+      "stem": "结构化模型输出常使用的文本数据格式是 ____。 / A common text format for structured model output is ____.",
+      "options": [],
+      "answerKeys": [],
+      "answerText": "JSON",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-15",
+      "number": 15,
+      "sourceRow": 16,
+      "type": "fill",
+      "stem": "受保护的在线接口通常应使用 ____ 协议。 / A protected online endpoint should normally use ____.",
+      "options": [],
+      "answerKeys": [],
+      "answerText": "HTTPS",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    },
+    {
+      "id": "demo-q-16",
+      "number": 16,
+      "sourceRow": 17,
+      "type": "fill",
+      "stem": "本项目的可选智能分类能力简称为 ____。 / The optional classification capability is abbreviated as ____.",
+      "options": [],
+      "answerKeys": [],
+      "answerText": "AI",
+      "gradable": true,
+      "optionOrderLocked": false,
+      "sourceIssue": null
+    }
+  ]
+}

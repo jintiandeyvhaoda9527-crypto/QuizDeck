@@ -1,0 +1,41 @@
+# Excel question-bank format
+
+QuizDeck accepts `.xls` and `.xlsx` files. Parsing happens in the client, and importing a file does not require an AI connection.
+
+## Recommended columns
+
+| Meaning | Example header |
+| --- | --- |
+| Number | `序号` or `题号` |
+| Type | `题型` or `类型` |
+| Prompt | `题干` or `题目` |
+| Answer | `答案` or `参考答案` |
+| Options | `选项A`, `选项B`, `A选项`, `B选项` |
+| Category | `分类`, `章节`, or `知识点` |
+
+The importer locates a recognizable header row on each sheet. Blank rows are ignored. Multiple sheets retain workbook order. A category can come from a category column or, when no category column is present, from the sheet name.
+
+## Supported types
+
+- `单选` / `单选题`
+- `多选` / `多选题`
+- `判断` / `判断题`
+- `填空` / `填空题`
+
+English header and type aliases are part of the bilingual release roadmap.
+
+## Answers
+
+Choice answers may use letters such as `A`, `AC`, `A、C`, or equivalent separators. A choice question whose answer points to a missing option is retained for review but marked ungradable. Fill answers are normalized for surrounding whitespace and common punctuation during grading.
+
+Judge questions keep their option order because swapping true and false can make the source answer misleading.
+
+## Minimal example
+
+| 序号 | 题型 | 题干 | 答案 | 选项A | 选项B | 分类 |
+| ---: | --- | --- | --- | --- | --- | --- |
+| 1 | 单选 | 哪项属于安全密码做法？ | B | 多人共用 | 唯一强密码 | 信息安全 |
+| 2 | 判断 | AI 候选分类保存前应人工复核。 | A | 正确 | 错误 | 合规学习 |
+| 3 | 填空 | 结构化文本格式是 ____。 | JSON | | | 数字技能 |
+
+Use only original, synthetic, public-domain, or properly licensed example content in repository contributions.

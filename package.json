@@ -1,0 +1,57 @@
+{
+  "name": "quizdeck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline-first quiz practice with reviewed AI-assisted question classification.",
+  "license": "MIT",
+  "keywords": [
+    "quiz",
+    "offline-first",
+    "android",
+    "education",
+    "ai-classification"
+  ],
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node ./node_modules/vinext/dist/cli.js dev",
+    "build": "node ./node_modules/vinext/dist/cli.js build",
+    "clean:mobile-output": "node ./scripts/clean-mobile-assets.mjs mobile-output",
+    "clean:android-assets": "node ./scripts/clean-mobile-assets.mjs android-assets",
+    "build:mobile": "pnpm run clean:mobile-output && vite build --config vite.mobile.config.ts",
+    "android:sync": "pnpm run build:mobile && pnpm run clean:android-assets && cap sync android",
+    "android:apk": "pnpm run android:sync && cd android && gradlew.bat :app:assembleDebug",
+    "start": "node ./node_modules/vinext/dist/cli.js start",
+    "test": "pnpm run build && node ./node_modules/tsx/dist/cli.mjs --test tests/*.test.mjs",
+    "lint": "eslint . --max-warnings=0",
+    "verify": "pnpm run test && pnpm run lint && pnpm run build:mobile"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.0.0",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
+    "react-server-dom-webpack": "19.2.6",
+    "tailwindcss": "4.2.1",
+    "tsx": "^4.23.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.0.13"
+  },
+  "type": "module"
+}

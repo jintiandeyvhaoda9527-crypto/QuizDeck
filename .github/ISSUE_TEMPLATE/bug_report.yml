@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible QuizDeck problem with a safe, minimal example.
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve QuizDeck. Do not upload credentials, private documents, employee data, or a complete organizational question bank.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - Web/PWA
+        - Development environment
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction
+      description: Use a minimal synthetic fixture when a question bank is involved.
+      placeholder: Steps, expected result, and actual result
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Include only logs or screenshots you have reviewed and redacted.
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Data-safety confirmation
+      options:
+        - label: I removed API keys, authorization headers, signing material, and personal data.
+          required: true
+        - label: Any attached question content is synthetic, public-domain, or compatibly licensed.
+          required: true
