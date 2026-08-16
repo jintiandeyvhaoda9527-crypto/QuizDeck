@@ -2,13 +2,20 @@ export const coreMessages = {
   "zh-CN": {
     "ai.keyStorage.webPreview":
       "网页预览仅在当前浏览器会话中保存 API Key；关闭会话后需要重新输入。",
+    "ai.keyStorage.secure":
+      "Android 使用系统密钥库加密保存当前 API Key。",
+    "ai.keyStorage.memory":
+      "当前运行环境只在内存中暂存 API Key，不会持久保存。",
     "core.error.aiClient.request-too-large": "AI 请求内容过大。",
     "core.error.aiClient.response-too-large": "AI 返回内容过大，已停止处理。",
     "core.error.aiClient.cancelled": "AI 请求已取消。",
     "core.error.aiClient.timeout": "AI 请求超时，请稍后重试。",
     "core.error.aiClient.network": "无法连接 AI 服务，请检查地址和网络。",
-    "core.error.aiClient.authentication":
-      "API Key 无效，或无权访问所选模型。",
+    "core.error.aiClient.browser-direct-unavailable":
+      "浏览器无法直接访问该服务，可能是 CORS 限制或网络故障；可改用 Android 或手动填写模型 ID。",
+    "core.error.aiClient.authentication": "API Key 无效。",
+    "core.error.aiClient.permission-denied":
+      "当前账号没有访问该接口或模型的权限。",
     "core.error.aiClient.payment-required":
       "AI 账户余额不足，请充值后重试。",
     "core.error.aiClient.not-found":
@@ -26,6 +33,12 @@ export const coreMessages = {
       "模型没有返回可用的最终文本。",
     "core.error.aiClient.invalid-response":
       "AI 服务返回了无法识别的数据。",
+    "core.error.aiConfiguration.invalid-provider":
+      "请选择受支持的 AI 服务商。",
+    "core.error.aiConfiguration.invalid-protocol":
+      "AI 服务商与协议类型不匹配。",
+    "core.error.aiConfiguration.invalid-provider-url":
+      "官方服务商必须使用预置的 API 地址。",
     "core.error.aiConfiguration.invalid-api-url":
       "请输入有效的 AI API 地址。",
     "core.error.aiConfiguration.insecure-api-url":
@@ -54,6 +67,10 @@ export const coreMessages = {
   "en-US": {
     "ai.keyStorage.webPreview":
       "The web preview keeps the API key only for the current browser session. You will need to enter it again after the session closes.",
+    "ai.keyStorage.secure":
+      "Android encrypts and stores the current API key in the system keystore.",
+    "ai.keyStorage.memory":
+      "This runtime keeps the API key in memory only and does not persist it.",
     "core.error.aiClient.request-too-large": "The AI request is too large.",
     "core.error.aiClient.response-too-large":
       "The AI response is too large and was not processed.",
@@ -61,8 +78,11 @@ export const coreMessages = {
     "core.error.aiClient.timeout": "The AI request timed out. Try again later.",
     "core.error.aiClient.network":
       "Could not connect to the AI service. Check the endpoint and network.",
-    "core.error.aiClient.authentication":
-      "The API key is invalid or cannot access the selected model.",
+    "core.error.aiClient.browser-direct-unavailable":
+      "The browser could not reach this service directly, possibly because of CORS or the network. Use Android or enter a model ID manually.",
+    "core.error.aiClient.authentication": "The API key is invalid.",
+    "core.error.aiClient.permission-denied":
+      "This account cannot access the endpoint or selected model.",
     "core.error.aiClient.payment-required":
       "The AI account has insufficient balance. Add funds and try again.",
     "core.error.aiClient.not-found":
@@ -81,6 +101,12 @@ export const coreMessages = {
       "The model did not return usable final text.",
     "core.error.aiClient.invalid-response":
       "The AI service returned an unrecognized response.",
+    "core.error.aiConfiguration.invalid-provider":
+      "Select a supported AI provider.",
+    "core.error.aiConfiguration.invalid-protocol":
+      "The AI provider and protocol do not match.",
+    "core.error.aiConfiguration.invalid-provider-url":
+      "Official providers must use their preset API endpoint.",
     "core.error.aiConfiguration.invalid-api-url":
       "Enter a valid AI API endpoint.",
     "core.error.aiConfiguration.insecure-api-url":
@@ -118,7 +144,10 @@ const coreErrorMessageKeys = {
     cancelled: "core.error.aiClient.cancelled",
     timeout: "core.error.aiClient.timeout",
     network: "core.error.aiClient.network",
+    "browser-direct-unavailable":
+      "core.error.aiClient.browser-direct-unavailable",
     authentication: "core.error.aiClient.authentication",
+    "permission-denied": "core.error.aiClient.permission-denied",
     "payment-required": "core.error.aiClient.payment-required",
     "not-found": "core.error.aiClient.not-found",
     "rate-limited": "core.error.aiClient.rate-limited",
@@ -130,6 +159,10 @@ const coreErrorMessageKeys = {
     "invalid-response": "core.error.aiClient.invalid-response",
   },
   AiConfigurationError: {
+    "invalid-provider": "core.error.aiConfiguration.invalid-provider",
+    "invalid-protocol": "core.error.aiConfiguration.invalid-protocol",
+    "invalid-provider-url":
+      "core.error.aiConfiguration.invalid-provider-url",
     "invalid-api-url": "core.error.aiConfiguration.invalid-api-url",
     "insecure-api-url": "core.error.aiConfiguration.insecure-api-url",
     "invalid-model": "core.error.aiConfiguration.invalid-model",

@@ -6,6 +6,7 @@ import { once } from "node:events";
 import {
   AiClientError,
   createOpenAiCompatibleClient,
+  discoverOpenAiModels,
   generatePartitionCandidate,
   testAiConnection,
 } from "../app/ai-core.ts";
@@ -70,7 +71,37 @@ function completion(content) {
 
 test("OpenAI 兼容接口通过真实 HTTP 完成连接测试、分批筛选与鉴权失败", async (t) => {
   const requests = [];
+  const modelRequests = [];
   const server = http.createServer(async (request, response) => {
+    if (request.method === "GET" && request.url === "/v1/models") {
+      if (request.headers.authorization !== "Bearer integration-key") {
+        sendJson(response, 401, { error: "secret body must be ignored" });
+        return;
+      }
+      let requestBody = "";
+      for await (const chunk of request) {
+        requestBody += chunk;
+      }
+      modelRequests.push({
+        authorization: request.headers.authorization,
+        body: requestBody,
+        url: request.url,
+      });
+      sendJson(response, 200, {
+        object: "list",
+        data: [
+          {
+            id: "integration-model",
+            owned_by: "integration-provider",
+            context_window: 32_768,
+          },
+          { id: "integration-reasoner-preview" },
+          { id: "text-embedding-integration" },
+        ],
+      });
+      return;
+    }
+
     if (
       request.method !== "POST" ||
       request.url !== "/v1/chat/completions"
@@ -133,11 +164,34 @@ test("OpenAI 兼容接口通过真实 HTTP 完成连接测试、分批筛选与�
   const address = server.address();
   assert.ok(address && typeof address === "object");
   const baseConfiguration = {
+    providerId: "custom-openai",
+    protocol: "openai-chat",
     apiBaseUrl: `http://127.0.0.1:${address.port}/v1`,
     apiKey: "integration-key",
     model: "integration-model",
     timeoutMs: 5_000,
   };
+  const discovery = await discoverOpenAiModels({
+    providerId: baseConfiguration.providerId,
+    protocol: baseConfiguration.protocol,
+    apiBaseUrl: baseConfiguration.apiBaseUrl,
+    apiKey: baseConfiguration.apiKey,
+    timeoutMs: baseConfiguration.timeoutMs,
+  });
+  assert.equal(discovery.source, "upstream");
+  assert.ok(discovery.detectedAt);
+  assert.deepEqual(
+    discovery.models.map(({ id }) => id),
+    ["integration-model", "integration-reasoner-preview"],
+  );
+  assert.deepEqual(modelRequests, [
+    {
+      authorization: "Bearer integration-key",
+      body: "",
+      url: "/v1/models",
+    },
+  ]);
+
   const client = createOpenAiCompatibleClient(baseConfiguration);
 
   const connection = await testAiConnection(client);
@@ -197,4 +251,32 @@ test("OpenAI 兼容接口通过真实 HTTP 完成连接测试、分批筛选与�
       error.code === "authentication" &&
       !error.message.includes("wrong-key"),
   );
+
+  await assert.rejects(
+    discoverOpenAiModels({
+      providerId: "custom-openai",
+      protocol: "openai-chat",
+      apiBaseUrl: baseConfiguration.apiBaseUrl,
+      apiKey: "wrong-key",
+      timeoutMs: 5_000,
+    }),
+    (error) =>
+      error instanceof AiClientError &&
+      error.code === "authentication" &&
+      !error.message.includes("wrong-key") &&
+      modelRequests.length === 1,
+  );
+
+  const noEnumeration = await discoverOpenAiModels({
+    providerId: "custom-openai",
+    protocol: "openai-chat",
+    apiBaseUrl: `http://127.0.0.1:${address.port}/without-models`,
+    apiKey: "integration-key",
+    timeoutMs: 5_000,
+  });
+  assert.deepEqual(noEnumeration, {
+    models: [],
+    source: "fallback",
+    warning: "unsupported",
+  });
 });

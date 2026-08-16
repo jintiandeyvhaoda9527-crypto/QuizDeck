@@ -50,13 +50,15 @@ import {
 } from "./quiz-session-storage";
 import {
   clearAiConfiguration,
-  createOpenAiCompatibleClient,
+  createAiProviderClient,
   generatePartitionCandidate,
+  getAiProviderAdapter,
+  getAiProviderDefinition,
   loadAiConfiguration,
   saveAiConfiguration,
   summarizePartitionIntent,
-  testAiConnection,
   validateAiSettings,
+  AiConfigurationError,
   type AiConfiguration,
   type AiIntentSummary,
   type AiPartitionCandidate,
@@ -616,7 +618,9 @@ export function QuizApp() {
   const [aiConfigStatusMessage, setAiConfigStatusMessage] =
     useState<string | undefined>(undefined);
   const [aiConfigAction, setAiConfigAction] =
-    useState<"idle" | "testing" | "saving" | "clearing">("idle");
+    useState<
+      "idle" | "discovering" | "testing" | "saving" | "clearing"
+    >("idle");
   const [aiConfigReturn, setAiConfigReturn] =
     useState<"settings" | "aiIntent">("settings");
   const [aiIntent, setAiIntent] = useState("");
@@ -638,6 +642,8 @@ export function QuizApp() {
   const aiIntentAbortControllerRef = useRef<AbortController | null>(null);
   const aiRunIdRef = useRef(0);
   const aiAbortControllerRef = useRef<AbortController | null>(null);
+  const aiConfigRequestIdRef = useRef(0);
+  const aiConfigAbortControllerRef = useRef<AbortController | null>(null);
 
   const activeBank =
     banks.find((bank) => bank.id === activeBankId) ?? builtInBank;
@@ -1365,26 +1371,95 @@ export function QuizApp() {
     }
   };
 
+  const handleDiscoverAiModels = async (value: AiConfigValue) => {
+    if (aiConfigAction !== "idle") {
+      return null;
+    }
+    const previousStatus = aiConfigStatus;
+    const requestId = aiConfigRequestIdRef.current + 1;
+    aiConfigRequestIdRef.current = requestId;
+    aiConfigAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    aiConfigAbortControllerRef.current = controller;
+    setAiConfigAction("discovering");
+    setAiConfigStatus("discovering");
+    setAiConfigStatusMessage(undefined);
+    try {
+      const provider = getAiProviderDefinition(value.providerId);
+      const result = await getAiProviderAdapter(provider.protocol).listModels(
+        {
+          providerId: provider.id,
+          protocol: provider.protocol,
+          apiBaseUrl: value.baseUrl,
+          apiKey: value.apiKey,
+          timeoutMs: 60_000,
+        },
+        { signal: controller.signal },
+      );
+      if (requestId !== aiConfigRequestIdRef.current) {
+        return null;
+      }
+      setAiConfigStatus(
+        previousStatus === "saved" ||
+          previousStatus === "changed" ||
+          previousStatus === "connected"
+          ? previousStatus
+          : aiConfiguration
+            ? "changed"
+            : "unconfigured",
+      );
+      setAiConfigStatusMessage(undefined);
+      return result;
+    } catch (error) {
+      if (requestId !== aiConfigRequestIdRef.current) {
+        return null;
+      }
+      setAiConfigStatus("error");
+      setAiConfigStatusMessage(
+        getCoreErrorMessage(locale, error) ??
+          (error instanceof Error
+            ? error.message
+            : t("quiz.error.aiConnectionTest")),
+      );
+      return null;
+    } finally {
+      if (requestId === aiConfigRequestIdRef.current) {
+        aiConfigAbortControllerRef.current = null;
+      }
+      setAiConfigAction("idle");
+    }
+  };
+
   const handleTestAiConnection = async (value: AiConfigValue) => {
     if (aiConfigAction !== "idle") {
       return;
     }
+    const requestId = aiConfigRequestIdRef.current + 1;
+    aiConfigRequestIdRef.current = requestId;
+    aiConfigAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    aiConfigAbortControllerRef.current = controller;
     setAiConfigAction("testing");
     setAiConfigStatus("testing");
     setAiConfigStatusMessage(t("quiz.ai.connection.testing"));
     try {
       const testedSettings = validateAiSettings({
+        providerId: value.providerId,
+        protocol: getAiProviderDefinition(value.providerId).protocol,
         apiBaseUrl: value.baseUrl,
         model: value.model,
         timeoutMs: 60_000,
+        detectedAt: value.detectedAt,
       });
-      const client = createOpenAiCompatibleClient({
-        apiBaseUrl: testedSettings.apiBaseUrl,
+      const result = await getAiProviderAdapter(
+        testedSettings.protocol,
+      ).testModel({
+        ...testedSettings,
         apiKey: value.apiKey,
-        model: testedSettings.model,
-        timeoutMs: testedSettings.timeoutMs,
-      });
-      const result = await testAiConnection(client);
+      }, { signal: controller.signal });
+      if (requestId !== aiConfigRequestIdRef.current) {
+        return;
+      }
       setAiConfigStatus("connected");
       setAiConfigStatusMessage(
         t("quiz.ai.connection.success", {
@@ -1393,6 +1468,9 @@ export function QuizApp() {
         }),
       );
     } catch (error) {
+      if (requestId !== aiConfigRequestIdRef.current) {
+        return;
+      }
       setAiConfigStatus("error");
       setAiConfigStatusMessage(
         getCoreErrorMessage(locale, error) ??
@@ -1401,6 +1479,9 @@ export function QuizApp() {
             : t("quiz.error.aiConnectionTest")),
       );
     } finally {
+      if (requestId === aiConfigRequestIdRef.current) {
+        aiConfigAbortControllerRef.current = null;
+      }
       setAiConfigAction("idle");
     }
   };
@@ -1414,10 +1495,13 @@ export function QuizApp() {
     try {
       await saveAiConfiguration(
         {
+          providerId: value.providerId,
+          protocol: getAiProviderDefinition(value.providerId).protocol,
           apiBaseUrl: value.baseUrl,
           apiKey: value.apiKey,
           model: value.model,
           timeoutMs: 60_000,
+          detectedAt: value.detectedAt,
         },
         aiApiKeyStore,
       );
@@ -1455,7 +1539,16 @@ export function QuizApp() {
         t("quiz.ai.configuration.cleared"),
       );
     } catch (error) {
-      setAiConfigStatus("error");
+      if (
+        error instanceof AiConfigurationError &&
+        error.code === "settings-storage-unavailable"
+      ) {
+        // The secure key has already been removed in this partial-failure case.
+        setAiConfiguration(null);
+        setAiConfigStatus("unconfigured");
+      } else {
+        setAiConfigStatus("error");
+      }
       setAiConfigStatusMessage(
         getCoreErrorMessage(locale, error) ??
           (error instanceof Error
@@ -1493,7 +1586,7 @@ export function QuizApp() {
     setAiIntentBusy(true);
 
     try {
-      const client = createOpenAiCompatibleClient(aiConfiguration);
+      const client = createAiProviderClient(aiConfiguration);
       const summary = await summarizePartitionIntent(
         client,
         bank,
@@ -1544,7 +1637,7 @@ export function QuizApp() {
     setAiProcessingError(null);
     setScreen("aiProcessing");
     try {
-      const client = createOpenAiCompatibleClient(aiConfiguration);
+      const client = createAiProviderClient(aiConfiguration);
       const candidate = await generatePartitionCandidate(
         client,
         bank,
@@ -2024,7 +2117,9 @@ export function QuizApp() {
         aiStatusLabel={
           aiConfiguration
             ? t("quiz.ai.status.configured")
-            : aiConfigStatus === "testing"
+            : aiConfigStatus === "discovering"
+              ? t("quiz.ai.status.discovering")
+              : aiConfigStatus === "testing"
               ? t("quiz.ai.status.testing")
               : aiConfigStatus === "error"
                 ? t("quiz.ai.status.error")
@@ -2043,30 +2138,47 @@ export function QuizApp() {
       <AiConfigScreen
         key={
           aiConfiguration
-            ? `${aiConfiguration.apiBaseUrl}:${aiConfiguration.model}`
+            ? `${aiConfiguration.providerId}:${aiConfiguration.apiBaseUrl}:${aiConfiguration.model}`
             : "unconfigured"
         }
         initialValue={{
-          baseUrl: aiConfiguration?.apiBaseUrl ?? "",
+          providerId: aiConfiguration?.providerId ?? "deepseek",
+          baseUrl:
+            aiConfiguration?.apiBaseUrl ??
+            getAiProviderDefinition("deepseek").defaultBaseUrl,
           apiKey: aiConfiguration?.apiKey ?? "",
           model: aiConfiguration?.model ?? "",
+          detectedAt: aiConfiguration?.detectedAt,
         }}
         status={aiConfigStatus}
         statusMessage={aiConfigStatusMessage}
+        isDiscovering={aiConfigAction === "discovering"}
         isSaving={aiConfigAction === "saving"}
         isTesting={aiConfigAction === "testing"}
         isClearing={aiConfigAction === "clearing"}
         canClear={Boolean(aiConfiguration)}
-        onBack={() => setScreen(aiConfigReturn)}
+        keyStorageSecurity={aiApiKeyStore.security}
+        onBack={() => {
+          aiConfigRequestIdRef.current += 1;
+          aiConfigAbortControllerRef.current?.abort();
+          aiConfigAbortControllerRef.current = null;
+          setAiConfigStatus(aiConfiguration ? "saved" : "unconfigured");
+          setAiConfigStatusMessage(undefined);
+          setScreen(aiConfigReturn);
+        }}
+        onDiscoverModels={handleDiscoverAiModels}
         onTestConnection={(value) => void handleTestAiConnection(value)}
         onSave={(value) => void handleSaveAiConfiguration(value)}
         onValueChange={() => {
+          aiConfigRequestIdRef.current += 1;
+          aiConfigAbortControllerRef.current?.abort();
+          aiConfigAbortControllerRef.current = null;
           if (
             aiConfigStatus === "connected" ||
             aiConfigStatus === "error" ||
             aiConfigStatus === "saved"
           ) {
-            setAiConfigStatus(aiConfiguration ? "saved" : "unconfigured");
+            setAiConfigStatus(aiConfiguration ? "changed" : "unconfigured");
             setAiConfigStatusMessage(
               aiConfiguration
                 ? t("quiz.ai.configuration.formChangedSaved")
@@ -2074,7 +2186,7 @@ export function QuizApp() {
             );
           }
         }}
-        onClear={() => void handleClearAiConfiguration()}
+        onClear={handleClearAiConfiguration}
       />
     );
   }

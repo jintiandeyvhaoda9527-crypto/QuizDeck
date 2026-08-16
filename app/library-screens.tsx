@@ -1,16 +1,24 @@
 "use client";
 
 import {
+  useEffect,
   useId,
   useRef,
   useState,
   type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
-  DEEPSEEK_API_BASE_URL,
-  DEEPSEEK_DEFAULT_MODEL,
-  DEEPSEEK_PRO_MODEL,
-} from "./ai-config";
+  filterAiModels,
+  isModelMissingFromUpstream,
+  type AiModel,
+  type AiModelDiscoveryResult,
+} from "./ai-model-discovery";
+import {
+  AI_PROVIDER_DEFINITIONS,
+  DEFAULT_AI_PROVIDER_ID,
+  getAiProviderDefinition,
+} from "./ai-providers";
 import { useI18n } from "./i18n";
 
 export interface SessionSummary {
@@ -192,30 +200,41 @@ export interface DeletePartitionConfirmDialogProps {
 export type AiConnectionStatus =
   | "unconfigured"
   | "saved"
+  | "changed"
+  | "discovering"
   | "testing"
   | "connected"
   | "error";
 
 export interface AiConfigValue {
+  providerId: string;
   baseUrl: string;
   apiKey: string;
   model: string;
+  detectedAt?: number;
 }
 
 export interface AiConfigScreenProps {
   initialValue: AiConfigValue;
   status?: AiConnectionStatus;
   statusMessage?: string;
+  isDiscovering?: boolean;
   isSaving?: boolean;
   isTesting?: boolean;
   isClearing?: boolean;
   canClear?: boolean;
+  keyStorageSecurity?: "secure" | "web-preview" | "memory";
   onBack: () => void;
+  onDiscoverModels: (
+    value: AiConfigValue,
+  ) => Promise<AiModelDiscoveryResult | null>;
   onTestConnection: (value: AiConfigValue) => void;
   onSave: (value: AiConfigValue) => void;
   onValueChange?: () => void;
-  onClear?: () => void;
+  onClear?: () => void | Promise<void>;
 }
+
+const AI_CONFIG_STATUS_ID = "ai-config-connection-status";
 
 export interface AiPartitionIntentScreenProps {
   bankName: string;
@@ -1750,45 +1769,238 @@ export function AiConfigScreen({
   initialValue,
   status = "unconfigured",
   statusMessage,
+  isDiscovering = false,
   isSaving = false,
   isTesting = false,
   isClearing = false,
   canClear = false,
+  keyStorageSecurity = "web-preview",
   onBack,
+  onDiscoverModels,
   onTestConnection,
   onSave,
   onValueChange,
   onClear,
 }: AiConfigScreenProps) {
   const { t } = useI18n();
+  const providerId = useId();
   const baseUrlId = useId();
   const apiKeyId = useId();
-  const modelId = useId();
+  const modelSearchId = useId();
+  const manualModelId = useId();
   const clearTitleId = useId();
   const clearDescriptionId = useId();
+  const modelListRef = useRef<HTMLDivElement | null>(null);
+  const clearDialogRef = useRef<HTMLElement | null>(null);
+  const clearTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const clearCancelRef = useRef<HTMLButtonElement | null>(null);
+  const statusRegionRef = useRef<HTMLElement | null>(null);
+  const clearReturnToStatusRef = useRef(false);
+  const discoveryRequestRef = useRef(0);
+  const [selectedProviderId, setSelectedProviderId] = useState(
+    initialValue.providerId || DEFAULT_AI_PROVIDER_ID,
+  );
   const [baseUrl, setBaseUrl] = useState(initialValue.baseUrl);
   const [apiKey, setApiKey] = useState(initialValue.apiKey);
   const [model, setModel] = useState(initialValue.model);
+  const [detectedAt, setDetectedAt] = useState(initialValue.detectedAt);
+  const [discoveryResult, setDiscoveryResult] =
+    useState<AiModelDiscoveryResult | null>(null);
+  const [modelQuery, setModelQuery] = useState("");
+  const [focusedModelId, setFocusedModelId] = useState("");
+  const [manualModel, setManualModel] = useState(
+    Boolean(initialValue.model),
+  );
   const [showApiKey, setShowApiKey] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
+
+  useEffect(() => {
+    if (!clearOpen) {
+      return;
+    }
+
+    const trigger = clearTriggerRef.current;
+    const focusFrame = globalThis.requestAnimationFrame(() => {
+      clearCancelRef.current?.focus();
+    });
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setClearOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = Array.from(
+        clearDialogRef.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleDialogKeyDown);
+    return () => {
+      globalThis.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", handleDialogKeyDown);
+      const returnToStatus = clearReturnToStatusRef.current;
+      if (
+        !returnToStatus &&
+        trigger?.isConnected &&
+        !trigger.disabled
+      ) {
+        trigger.focus();
+      }
+    };
+  }, [clearOpen]);
+
+  const provider =
+    AI_PROVIDER_DEFINITIONS.find(({ id }) => id === selectedProviderId) ??
+    getAiProviderDefinition(DEFAULT_AI_PROVIDER_ID);
   const value = {
+    providerId: provider.id,
     baseUrl: baseUrl.trim(),
     apiKey: apiKey.trim(),
     model: model.trim(),
+    ...(detectedAt ? { detectedAt } : {}),
   };
-  const canSubmit = Boolean(value.baseUrl && value.apiKey && value.model);
+  const canDiscover = Boolean(
+    value.providerId && value.baseUrl && value.apiKey,
+  );
+  const canTest = Boolean(canDiscover && value.model);
+  const canSave = canTest && status === "connected";
   const busy =
-    isSaving || isTesting || isClearing || status === "testing";
+    isDiscovering ||
+    isSaving ||
+    isTesting ||
+    isClearing ||
+    status === "discovering" ||
+    status === "testing";
   const statusCopy = statusMessage
     ?? t(`library.aiConfig.statusCopy.${status}`);
-  const applyDeepSeekPreset = (selectedModel: string) => {
-    setBaseUrl(DEEPSEEK_API_BASE_URL);
-    setModel(selectedModel);
+  const filteredModels = filterAiModels(
+    discoveryResult?.models ?? [],
+    modelQuery,
+  );
+  const tabbableModelId = filteredModels.some(
+    (candidate) => candidate.id === focusedModelId,
+  )
+    ? focusedModelId
+    : filteredModels.some((candidate) => candidate.id === model.trim())
+      ? model.trim()
+      : filteredModels[0]?.id ?? "";
+  const savedModelMissing = Boolean(
+    canClear &&
+      initialValue.model &&
+      initialValue.providerId === provider.id &&
+      initialValue.baseUrl === value.baseUrl &&
+      model.trim() === initialValue.model &&
+      isModelMissingFromUpstream(model.trim(), discoveryResult),
+  );
+
+  const invalidateDiscovery = () => {
+    discoveryRequestRef.current += 1;
+    setDiscoveryResult(null);
+    setDetectedAt(undefined);
+    setModelQuery("");
+    setFocusedModelId("");
+  };
+
+  const chooseProvider = (nextProviderId: string) => {
+    const nextProvider = getAiProviderDefinition(nextProviderId);
+    setSelectedProviderId(nextProvider.id);
+    setBaseUrl(nextProvider.defaultBaseUrl);
+    setApiKey("");
+    setModel("");
+    setManualModel(false);
+    invalidateDiscovery();
     onValueChange?.();
   };
 
+  const handleDiscovery = async () => {
+    const requestId = discoveryRequestRef.current + 1;
+    discoveryRequestRef.current = requestId;
+    const requestValue = { ...value };
+    const result = await onDiscoverModels(requestValue);
+    if (requestId !== discoveryRequestRef.current || !result) {
+      return;
+    }
+    setDiscoveryResult(result);
+    setDetectedAt(result.detectedAt);
+    setModelQuery("");
+    setFocusedModelId(
+      result.models.some((candidate) => candidate.id === model.trim())
+        ? model.trim()
+        : result.models[0]?.id ?? "",
+    );
+    setManualModel(
+      Boolean(
+        model.trim() &&
+          !result.models.some((candidate) => candidate.id === model.trim()),
+      ),
+    );
+  };
+
+  const selectModel = (selectedModel: AiModel) => {
+    setModel(selectedModel.id);
+    setFocusedModelId(selectedModel.id);
+    setManualModel(false);
+    onValueChange?.();
+  };
+
+  const handleModelListKeyDown = (
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    const options = Array.from(
+      modelListRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="option"]:not(:disabled)',
+      ) ?? [],
+    );
+    if (options.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    const currentIndex = options.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : event.key === "ArrowUp"
+          ? Math.max(0, currentIndex < 0 ? options.length - 1 : currentIndex - 1)
+          : Math.min(options.length - 1, currentIndex + 1);
+    options[nextIndex]?.focus();
+  };
+
+  const discoverySummary = discoveryResult?.source === "upstream"
+    ? t("library.aiConfig.discovery.liveSummary", {
+        count: discoveryResult.models.length,
+      })
+    : discoveryResult
+      ? t(`library.aiConfig.discovery.warning.${discoveryResult.warning}`)
+      : null;
+
   return (
-    <main className="app-shell library-shell detail-shell ai-config-shell">
+    <main
+      className="app-shell library-shell detail-shell ai-config-shell"
+      aria-busy={busy}
+    >
       <div className="library-page">
         <header className="detail-header">
           <button type="button" className="back-action" onClick={onBack}>
@@ -1805,42 +2017,54 @@ export function AiConfigScreen({
             <span>{t("library.aiConfig.compatibleApi")}</span>
           </div>
           <div className="ai-config-card">
-            <div className="ai-provider-preset">
-              <span>
-                <strong>{t("library.aiConfig.deepSeekOfficial")}</strong>
-                <small>{t("library.aiConfig.presetDescription")}</small>
-              </span>
-              <div>
-                <button
-                  type="button"
-                  aria-pressed={
-                    baseUrl.trim() === DEEPSEEK_API_BASE_URL &&
-                    model.trim() === DEEPSEEK_DEFAULT_MODEL
-                  }
-                  disabled={busy}
-                  onClick={() =>
-                    applyDeepSeekPreset(DEEPSEEK_DEFAULT_MODEL)
-                  }
-                >
-                  {t("library.aiConfig.flashRecommended")}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={
-                    baseUrl.trim() === DEEPSEEK_API_BASE_URL &&
-                    model.trim() === DEEPSEEK_PRO_MODEL
-                  }
-                  disabled={busy}
-                  onClick={() =>
-                    applyDeepSeekPreset(DEEPSEEK_PRO_MODEL)
-                  }
-                >
-                  {t("library.aiConfig.pro")}
-                </button>
+            <label className="field-label" htmlFor={providerId}>
+              {t("library.aiConfig.provider")}
+            </label>
+            <select
+              id={providerId}
+              className="text-field"
+              value={provider.id}
+              disabled={busy}
+              onChange={(event) => chooseProvider(event.target.value)}
+            >
+              {AI_PROVIDER_DEFINITIONS.map((definition) => (
+                <option value={definition.id} key={definition.id}>
+                  {t(`library.aiConfig.provider.${definition.id}`)}
+                </option>
+              ))}
+            </select>
+            <small className="field-help">
+              {t("library.aiConfig.providerHelp")}
+            </small>
+
+            {provider.homepageUrl ? (
+              <div className="ai-provider-links">
+                {[
+                  ["homepage", provider.homepageUrl],
+                  ["docs", provider.docsUrl],
+                  ["apiKeyLink", provider.apiKeyUrl],
+                ].map(([key, href]) => (
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    key={key}
+                  >
+                    {t(`library.aiConfig.${key}`)}
+                    <span className="sr-only">
+                      {t("library.aiConfig.newWindow")}
+                    </span>
+                  </a>
+                ))}
               </div>
+            ) : null}
+
+            <div className="ai-protocol-note">
+              <span>{t("library.aiConfig.protocol")}</span>
+              <strong>OpenAI Compatible</strong>
             </div>
 
-            <label className="field-label" htmlFor={baseUrlId}>
+            <label className="field-label field-label-spaced" htmlFor={baseUrlId}>
               {t("library.aiConfig.baseUrl")}
             </label>
             <input
@@ -1853,14 +2077,34 @@ export function AiConfigScreen({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
+              readOnly={provider.lockedBaseUrl}
+              aria-readonly={provider.lockedBaseUrl}
+              disabled={busy && !provider.lockedBaseUrl}
               onChange={(event) => {
                 setBaseUrl(event.target.value);
+                setApiKey("");
+                setModel("");
+                setManualModel(false);
+                invalidateDiscovery();
                 onValueChange?.();
               }}
             />
             <small className="field-help">
-              {t("library.aiConfig.baseUrlHelp")}
+              {provider.lockedBaseUrl
+                ? t("library.aiConfig.officialBaseUrlHelp")
+                : t("library.aiConfig.baseUrlHelp")}
             </small>
+
+            {!provider.lockedBaseUrl ? (
+              <div className="ai-custom-provider-warning" role="note">
+                <strong>{t("library.aiConfig.customWarningTitle")}</strong>
+                <span>
+                  {t("library.aiConfig.customWarning", {
+                    url: value.baseUrl || t("library.aiConfig.addressNotSet"),
+                  })}
+                </span>
+              </div>
+            ) : null}
 
             <label className="field-label field-label-spaced" htmlFor={apiKeyId}>
               {t("library.aiConfig.apiKey")}
@@ -1876,8 +2120,10 @@ export function AiConfigScreen({
                 autoCorrect="off"
                 spellCheck={false}
                 autoComplete="off"
+                disabled={busy}
                 onChange={(event) => {
                   setApiKey(event.target.value);
+                  invalidateDiscovery();
                   onValueChange?.();
                 }}
               />
@@ -1895,35 +2141,189 @@ export function AiConfigScreen({
               </button>
             </div>
             <small className="field-help">
-              {t("ai.keyStorage.webPreview")}
+              {t(
+                keyStorageSecurity === "secure"
+                  ? "ai.keyStorage.secure"
+                  : keyStorageSecurity === "memory"
+                    ? "ai.keyStorage.memory"
+                    : "ai.keyStorage.webPreview",
+              )}
             </small>
 
-            <label className="field-label field-label-spaced" htmlFor={modelId}>
-              {t("library.aiConfig.model")}
-            </label>
-            <input
-              id={modelId}
-              className="text-field"
-              value={model}
-              placeholder={t("library.aiConfig.modelPlaceholder")}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              onChange={(event) => {
-                setModel(event.target.value);
-                onValueChange?.();
-              }}
-            />
-            <small className="field-help">
-              {t("library.aiConfig.modelHelp")}
-            </small>
+            <div className="ai-discovery-action">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={!canDiscover || busy}
+                onClick={() => void handleDiscovery()}
+              >
+                {isDiscovering
+                  ? t("library.aiConfig.discovery.detecting")
+                  : t("library.aiConfig.discovery.detect")}
+              </button>
+              <small>{t("library.aiConfig.discovery.help")}</small>
+            </div>
+          </div>
+        </section>
+
+        <section className="settings-group" aria-labelledby="ai-model-title">
+          <div className="section-heading">
+            <h2 id="ai-model-title">{t("library.aiConfig.chooseModel")}</h2>
+            <span>{t("library.aiConfig.chooseModelHelp")}</span>
+          </div>
+          <div className="ai-config-card ai-model-picker">
+            {discoverySummary ? (
+              <div
+                className={`ai-discovery-summary ${discoveryResult?.source ?? ""}`}
+                role="status"
+                aria-live="polite"
+              >
+                <strong>{discoverySummary}</strong>
+                {discoveryResult?.detectedAt ? (
+                  <span>
+                    {t("library.aiConfig.discovery.detectedAt", {
+                      time: new Date(discoveryResult.detectedAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }),
+                    })}
+                  </span>
+                ) : null}
+              </div>
+            ) : (
+              <p className="ai-model-empty">
+                {t("library.aiConfig.discovery.notRun")}
+              </p>
+            )}
+
+            {discoveryResult?.models.length ? (
+              <>
+                <label className="field-label" htmlFor={modelSearchId}>
+                  {t("library.aiConfig.searchModels")}
+                </label>
+                <input
+                  id={modelSearchId}
+                  className="text-field"
+                  type="search"
+                  value={modelQuery}
+                  placeholder={t("library.aiConfig.searchModelsPlaceholder")}
+                  disabled={busy}
+                  onChange={(event) => setModelQuery(event.target.value)}
+                />
+                <div
+                  className="ai-model-options"
+                  role="listbox"
+                  aria-label={t("library.aiConfig.modelListAria")}
+                  ref={modelListRef}
+                  onKeyDown={handleModelListKeyDown}
+                >
+                  {filteredModels.length ? (
+                    filteredModels.map((candidate) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={model.trim() === candidate.id}
+                        tabIndex={tabbableModelId === candidate.id ? 0 : -1}
+                        className="ai-model-option"
+                        disabled={busy}
+                        key={candidate.id}
+                        onFocus={() => setFocusedModelId(candidate.id)}
+                        onClick={() => selectModel(candidate)}
+                      >
+                        <span>
+                          <strong>{candidate.name}</strong>
+                          {candidate.name !== candidate.id ? (
+                            <code>{candidate.id}</code>
+                          ) : null}
+                        </span>
+                        <span className="ai-model-badges">
+                          {candidate.recommended ? (
+                            <small>{t("library.aiConfig.badge.recommended")}</small>
+                          ) : null}
+                          {candidate.isReasoning ? (
+                            <small>{t("library.aiConfig.badge.reasoning")}</small>
+                          ) : null}
+                          {candidate.releaseStage ? (
+                            <small>
+                              {t(`library.aiConfig.badge.${candidate.releaseStage}`)}
+                            </small>
+                          ) : null}
+                          {candidate.contextWindow ? (
+                            <small>
+                              {t("library.aiConfig.badge.context", {
+                                count: candidate.contextWindow.toLocaleString(),
+                              })}
+                            </small>
+                          ) : null}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <p>{t("library.aiConfig.noSearchResults")}</p>
+                  )}
+                </div>
+              </>
+            ) : null}
+
+            {model && !manualModel ? (
+              <div className="ai-selected-model">
+                <span>{t("library.aiConfig.selectedModel")}</span>
+                <strong>{model}</strong>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="ai-manual-model-toggle"
+              aria-expanded={manualModel}
+              disabled={busy}
+              onClick={() => setManualModel((current) => !current)}
+            >
+              {t("library.aiConfig.manualModel")}
+            </button>
+
+            {manualModel ? (
+              <div className="ai-manual-model-field">
+                <label className="field-label" htmlFor={manualModelId}>
+                  {t("library.aiConfig.manualModelId")}
+                </label>
+                <input
+                  id={manualModelId}
+                  className="text-field"
+                  value={model}
+                  placeholder={t("library.aiConfig.modelPlaceholder")}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setModel(event.target.value);
+                    onValueChange?.();
+                  }}
+                />
+                <small className="field-help">
+                  {t("library.aiConfig.manualModelHelp")}
+                </small>
+              </div>
+            ) : null}
+
+            {savedModelMissing ? (
+              <div className="ai-model-missing" role="alert">
+                <strong>{t("library.aiConfig.modelMissingTitle")}</strong>
+                <span>{t("library.aiConfig.modelMissingDescription")}</span>
+              </div>
+            ) : null}
           </div>
         </section>
 
         <section
+          id={AI_CONFIG_STATUS_ID}
           className={`ai-connection-status ${status}`}
+          ref={statusRegionRef}
+          role={status === "error" ? "alert" : "status"}
           aria-live="polite"
           aria-label={t("library.aiConfig.statusAria")}
+          tabIndex={-1}
         >
           <span className="status-dot" aria-hidden="true" />
           <span>
@@ -1938,7 +2338,7 @@ export function AiConfigScreen({
           <button
             type="button"
             className="secondary-button"
-            disabled={!canSubmit || busy}
+            disabled={!canTest || busy}
             onClick={() => onTestConnection(value)}
           >
             {isTesting || status === "testing"
@@ -1948,7 +2348,7 @@ export function AiConfigScreen({
           <button
             type="button"
             className="primary-button"
-            disabled={!canSubmit || busy}
+            disabled={!canSave || busy}
             onClick={() => onSave(value)}
           >
             {isSaving
@@ -1957,12 +2357,22 @@ export function AiConfigScreen({
           </button>
         </div>
 
+        {!canSave && status !== "saved" ? (
+          <p className="ai-save-requirement">
+            {t("library.aiConfig.saveAfterTest")}
+          </p>
+        ) : null}
+
         {canClear && onClear ? (
           <button
             type="button"
             className="ai-config-clear-button"
+            ref={clearTriggerRef}
             disabled={busy}
-            onClick={() => setClearOpen(true)}
+            onClick={() => {
+              clearReturnToStatusRef.current = false;
+              setClearOpen(true);
+            }}
           >
             {isClearing
               ? t("library.aiConfig.clearing")
@@ -1979,6 +2389,7 @@ export function AiConfigScreen({
         <div className="sheet-backdrop">
           <section
             className="modal-card destructive-dialog compact-dialog"
+            ref={clearDialogRef}
             role="alertdialog"
             aria-modal="true"
             aria-labelledby={clearTitleId}
@@ -1995,6 +2406,7 @@ export function AiConfigScreen({
               <button
                 type="button"
                 className="secondary-button"
+                ref={clearCancelRef}
                 onClick={() => setClearOpen(false)}
               >
                 {t("library.common.cancel")}
@@ -2003,8 +2415,19 @@ export function AiConfigScreen({
                 type="button"
                 className="primary-button danger-button"
                 onClick={() => {
+                  clearReturnToStatusRef.current = true;
                   setClearOpen(false);
-                  onClear();
+                  const restoreStatusFocus = () => {
+                    clearReturnToStatusRef.current = false;
+                    globalThis.requestAnimationFrame(() => {
+                      document.getElementById(AI_CONFIG_STATUS_ID)?.focus();
+                    });
+                  };
+                  const clearRequest = Promise.resolve().then(onClear);
+                  void clearRequest.then(
+                    restoreStatusFocus,
+                    restoreStatusFocus,
+                  );
                 }}
               >
                 {t("library.aiConfig.clearConfirm")}

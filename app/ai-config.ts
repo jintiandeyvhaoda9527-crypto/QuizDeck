@@ -1,4 +1,13 @@
-export const AI_SETTINGS_STORAGE_KEY = "quizdeck:ai-settings:v1";
+import {
+  CUSTOM_AI_PROVIDER_ID,
+  getAiProviderDefinition,
+  inferAiProviderId,
+  tryGetAiProviderDefinition,
+  type AiProtocol,
+} from "./ai-providers";
+
+export const AI_SETTINGS_STORAGE_KEY = "quizdeck:ai-settings:v2";
+export const AI_SETTINGS_LEGACY_STORAGE_KEY = "quizdeck:ai-settings:v1";
 export const AI_WEB_PREVIEW_KEY_STORAGE_KEY =
   "quizdeck:ai-api-key:web-preview:v1";
 
@@ -19,14 +28,22 @@ const MAX_MODEL_LENGTH = 128;
 const MAX_API_KEY_LENGTH = 4_096;
 
 export interface AiSettings {
+  providerId: string;
+  protocol: AiProtocol;
   apiBaseUrl: string;
   model: string;
   timeoutMs: number;
+  detectedAt?: number;
 }
 
 export interface AiConfiguration extends AiSettings {
   apiKey: string;
 }
+
+export type AiConnectionInput = Pick<
+  AiConfiguration,
+  "providerId" | "protocol" | "apiBaseUrl" | "apiKey" | "timeoutMs"
+>;
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -42,12 +59,15 @@ export interface StorageLike {
  */
 export interface AiApiKeyStore {
   readonly security: "secure" | "web-preview" | "memory";
-  getApiKey(): Promise<string | null>;
-  setApiKey(apiKey: string): Promise<void>;
+  getApiKey(expectedConnectionBinding?: string): Promise<string | null>;
+  setApiKey(apiKey: string, connectionBinding?: string): Promise<void>;
   removeApiKey(): Promise<void>;
 }
 
 export type AiConfigurationErrorCode =
+  | "invalid-provider"
+  | "invalid-protocol"
+  | "invalid-provider-url"
   | "invalid-api-url"
   | "insecure-api-url"
   | "invalid-model"
@@ -216,16 +236,116 @@ export function normalizeAiTimeout(value: number | undefined) {
   );
 }
 
-export function validateAiSettings(
-  value: Pick<AiSettings, "apiBaseUrl" | "model"> &
-    Partial<Pick<AiSettings, "timeoutMs">>,
-): AiSettings {
-  const apiBaseUrl = normalizeAiApiBaseUrl(value.apiBaseUrl);
+export function normalizeAiDetectedAt(value: number | undefined) {
+  if (
+    value === undefined ||
+    !Number.isFinite(value) ||
+    value <= 0
+  ) {
+    return undefined;
+  }
+  return Math.floor(value);
+}
+
+type AiSettingsInput = Pick<AiSettings, "apiBaseUrl" | "model"> &
+  Partial<
+    Pick<
+      AiSettings,
+      "providerId" | "protocol" | "timeoutMs" | "detectedAt"
+    >
+  >;
+
+type AiConnectionSettingsInput = Pick<AiSettings, "apiBaseUrl"> &
+  Partial<
+    Pick<AiSettings, "providerId" | "protocol" | "timeoutMs">
+  >;
+
+function validateAiConnectionSettings(
+  value: AiConnectionSettingsInput,
+): Omit<AiConnectionInput, "apiKey"> {
+  const suppliedBaseUrl = normalizeAiApiBaseUrl(value.apiBaseUrl);
+  const providerWasExplicit = typeof value.providerId === "string";
+  const providerId = providerWasExplicit
+    ? value.providerId!.trim()
+    : inferAiProviderId(suppliedBaseUrl) ?? CUSTOM_AI_PROVIDER_ID;
+  const provider = tryGetAiProviderDefinition(providerId);
+  if (!provider) {
+    throw new AiConfigurationError(
+      "invalid-provider",
+      "请选择受支持的 AI 服务商。",
+    );
+  }
+  if (value.protocol && value.protocol !== provider.protocol) {
+    throw new AiConfigurationError(
+      "invalid-protocol",
+      "AI 服务商与协议类型不匹配。",
+    );
+  }
+
+  let apiBaseUrl = suppliedBaseUrl;
+  if (provider.lockedBaseUrl) {
+    const officialBaseUrl = normalizeAiApiBaseUrl(provider.defaultBaseUrl);
+    const inferredProviderId = inferAiProviderId(suppliedBaseUrl);
+    if (providerWasExplicit && suppliedBaseUrl !== officialBaseUrl) {
+      throw new AiConfigurationError(
+        "invalid-provider-url",
+        "官方服务商必须使用预置的 API 地址。",
+      );
+    }
+    if (!providerWasExplicit && inferredProviderId !== provider.id) {
+      throw new AiConfigurationError(
+        "invalid-provider-url",
+        "AI 服务商与 API 地址不匹配。",
+      );
+    }
+    apiBaseUrl = officialBaseUrl;
+  }
+
   return {
+    providerId: provider.id,
+    protocol: provider.protocol,
     apiBaseUrl,
-    model: normalizeAiProviderModel(apiBaseUrl, value.model),
     timeoutMs: normalizeAiTimeout(value.timeoutMs),
   };
+}
+
+export function validateAiConnectionInput(
+  value: Pick<AiConnectionInput, "apiBaseUrl" | "apiKey"> &
+    Partial<
+      Pick<AiConnectionInput, "providerId" | "protocol" | "timeoutMs">
+    >,
+): AiConnectionInput {
+  return {
+    ...validateAiConnectionSettings(value),
+    apiKey: normalizeAiApiKey(value.apiKey),
+  };
+}
+
+export function validateAiSettings(
+  value: AiSettingsInput,
+): AiSettings {
+  const connection = validateAiConnectionSettings(value);
+
+  const detectedAt = normalizeAiDetectedAt(value.detectedAt);
+  const settings: AiSettings = {
+    ...connection,
+    model: normalizeAiProviderModel(connection.apiBaseUrl, value.model),
+  };
+  if (detectedAt !== undefined) {
+    settings.detectedAt = detectedAt;
+  }
+  return settings;
+}
+
+export function createAiConnectionKeyBinding(
+  value: AiConnectionSettingsInput,
+) {
+  const connection = validateAiConnectionSettings(value);
+  return JSON.stringify([
+    connection.providerId,
+    connection.protocol,
+    connection.apiBaseUrl,
+  ]);
 }
 
 function getDefaultStorage(): StorageLike {
@@ -261,35 +381,90 @@ export function readAiSettings(
     );
   }
 
-  if (!raw) {
+  if (raw !== null) {
+    try {
+      const value = JSON.parse(raw) as Partial<AiSettings>;
+      if (
+        typeof value.providerId !== "string" ||
+        typeof value.protocol !== "string" ||
+        typeof value.apiBaseUrl !== "string" ||
+        typeof value.model !== "string"
+      ) {
+        return null;
+      }
+      return validateAiSettings({
+        providerId: value.providerId,
+        protocol: value.protocol as AiProtocol,
+        apiBaseUrl: value.apiBaseUrl,
+        model: value.model,
+        timeoutMs:
+          typeof value.timeoutMs === "number" ? value.timeoutMs : undefined,
+        detectedAt:
+          typeof value.detectedAt === "number" ? value.detectedAt : undefined,
+      });
+    } catch {
+      // A present but invalid v2 record must not silently downgrade to v1.
+      return null;
+    }
+  }
+
+  let legacyRaw: string | null;
+  try {
+    legacyRaw = storage.getItem(AI_SETTINGS_LEGACY_STORAGE_KEY);
+  } catch {
+    throw new AiConfigurationError(
+      "settings-storage-unavailable",
+      "无法读取 AI 设置。",
+    );
+  }
+  if (!legacyRaw) {
     return null;
   }
 
   try {
-    const value = JSON.parse(raw) as Partial<AiSettings>;
+    const value = JSON.parse(legacyRaw) as Partial<AiSettings>;
     if (
       typeof value.apiBaseUrl !== "string" ||
       typeof value.model !== "string"
     ) {
       return null;
     }
-    return validateAiSettings({
-      apiBaseUrl: value.apiBaseUrl,
+    const providerId = isOfficialDeepSeekApiUrl(value.apiBaseUrl)
+      ? "deepseek"
+      : CUSTOM_AI_PROVIDER_ID;
+    const apiBaseUrl = providerId === "deepseek"
+      ? getAiProviderDefinition(providerId).defaultBaseUrl
+      : buildChatCompletionsUrl(value.apiBaseUrl).replace(
+          /\/chat\/completions$/u,
+          "",
+        );
+    const settings = validateAiSettings({
+      providerId,
+      protocol: "openai-chat",
+      apiBaseUrl,
       model: value.model,
       timeoutMs:
         typeof value.timeoutMs === "number" ? value.timeoutMs : undefined,
     });
-  } catch (error) {
-    if (error instanceof AiConfigurationError) {
-      return null;
+
+    try {
+      storage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      try {
+        storage.removeItem(AI_SETTINGS_LEGACY_STORAGE_KEY);
+      } catch {
+        // v2 now takes precedence; a stale v1 record contains no secret.
+      }
+    } catch {
+      // Keep v1 readable when migration cannot be persisted.
     }
+    return settings;
+  } catch {
     return null;
   }
 }
 
 export function writeAiSettings(
-  value: Pick<AiSettings, "apiBaseUrl" | "model"> &
-    Partial<Pick<AiSettings, "timeoutMs">>,
+  value: AiSettingsInput,
   storage: StorageLike = getDefaultStorage(),
 ) {
   const settings = validateAiSettings(value);
@@ -301,15 +476,29 @@ export function writeAiSettings(
       "无法保存 AI 设置。",
     );
   }
+  try {
+    storage.removeItem(AI_SETTINGS_LEGACY_STORAGE_KEY);
+  } catch {
+    // v2 is authoritative once written; v1 never stores the API key.
+  }
   return settings;
 }
 
 export function removeAiSettings(
   storage: StorageLike = getDefaultStorage(),
 ) {
+  let failed = false;
   try {
     storage.removeItem(AI_SETTINGS_STORAGE_KEY);
   } catch {
+    failed = true;
+  }
+  try {
+    storage.removeItem(AI_SETTINGS_LEGACY_STORAGE_KEY);
+  } catch {
+    failed = true;
+  }
+  if (failed) {
     throw new AiConfigurationError(
       "settings-storage-unavailable",
       "无法清除 AI 设置。",
@@ -334,9 +523,41 @@ export function createWebPreviewApiKeyStore(
 
   return {
     security: "web-preview",
-    async getApiKey() {
+    async getApiKey(expectedConnectionBinding) {
       try {
-        return keyStorage.getItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
+        const raw = keyStorage.getItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
+        if (!raw) {
+          return null;
+        }
+        try {
+          const record = JSON.parse(raw) as {
+            version?: unknown;
+            apiKey?: unknown;
+            connectionBinding?: unknown;
+          };
+          if (
+            record?.version === 2 &&
+            typeof record.apiKey === "string" &&
+            typeof record.connectionBinding === "string"
+          ) {
+            if (
+              expectedConnectionBinding &&
+              record.connectionBinding !== expectedConnectionBinding
+            ) {
+              return null;
+            }
+            return normalizeAiApiKey(record.apiKey);
+          }
+        } catch {
+          // A v1 record was the raw key string rather than structured JSON.
+        }
+        if (expectedConnectionBinding) {
+          // An unbound legacy web key cannot safely be paired with shared
+          // localStorage settings that another tab may have changed.
+          keyStorage.removeItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY);
+          return null;
+        }
+        return normalizeAiApiKey(raw);
       } catch {
         throw new AiConfigurationError(
           "key-storage-unavailable",
@@ -344,10 +565,17 @@ export function createWebPreviewApiKeyStore(
         );
       }
     },
-    async setApiKey(value: string) {
+    async setApiKey(value: string, connectionBinding = "") {
       const apiKey = normalizeAiApiKey(value);
       try {
-        keyStorage.setItem(AI_WEB_PREVIEW_KEY_STORAGE_KEY, apiKey);
+        keyStorage.setItem(
+          AI_WEB_PREVIEW_KEY_STORAGE_KEY,
+          JSON.stringify({
+            version: 2,
+            apiKey,
+            connectionBinding,
+          }),
+        );
       } catch {
         throw new AiConfigurationError(
           "key-storage-unavailable",
@@ -397,7 +625,9 @@ export async function loadAiConfiguration(
 
   let storedKey: string | null;
   try {
-    storedKey = await keyStore.getApiKey();
+    storedKey = await keyStore.getApiKey(
+      createAiConnectionKeyBinding(settings),
+    );
   } catch {
     throw new AiConfigurationError(
       "key-storage-unavailable",
@@ -415,19 +645,40 @@ export async function loadAiConfiguration(
   };
 }
 
-export async function saveAiConfiguration(
+let aiConfigurationMutationQueue: Promise<void> = Promise.resolve();
+
+function enqueueAiConfigurationMutation<T>(operation: () => Promise<T>) {
+  const result = aiConfigurationMutationQueue.then(operation, operation);
+  aiConfigurationMutationQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function saveAiConfigurationImmediately(
   value: Pick<AiConfiguration, "apiBaseUrl" | "model" | "apiKey"> &
-    Partial<Pick<AiConfiguration, "timeoutMs">>,
+    Partial<
+      Pick<
+        AiConfiguration,
+        "providerId" | "protocol" | "timeoutMs" | "detectedAt"
+      >
+    >,
   keyStore: AiApiKeyStore,
   storage: StorageLike = getDefaultStorage(),
 ) {
   const settings = validateAiSettings(value);
   const apiKey = normalizeAiApiKey(value.apiKey);
+  const connectionBinding = createAiConnectionKeyBinding(settings);
+  const previousSettings = readAiSettings(storage);
+  const previousConnectionBinding = previousSettings
+    ? createAiConnectionKeyBinding(previousSettings)
+    : undefined;
   let previousKey: string | null;
 
   try {
-    previousKey = await keyStore.getApiKey();
-    await keyStore.setApiKey(apiKey);
+    previousKey = await keyStore.getApiKey(previousConnectionBinding);
+    await keyStore.setApiKey(apiKey, connectionBinding);
   } catch {
     throw new AiConfigurationError(
       "key-storage-unavailable",
@@ -441,7 +692,7 @@ export async function saveAiConfiguration(
     // Restore the previous secret if ordinary settings could not be committed.
     try {
       if (previousKey) {
-        await keyStore.setApiKey(previousKey);
+        await keyStore.setApiKey(previousKey, previousConnectionBinding);
       } else {
         await keyStore.removeApiKey();
       }
@@ -454,7 +705,23 @@ export async function saveAiConfiguration(
   return settings;
 }
 
-export async function clearAiConfiguration(
+export function saveAiConfiguration(
+  value: Pick<AiConfiguration, "apiBaseUrl" | "model" | "apiKey"> &
+    Partial<
+      Pick<
+        AiConfiguration,
+        "providerId" | "protocol" | "timeoutMs" | "detectedAt"
+      >
+    >,
+  keyStore: AiApiKeyStore,
+  storage: StorageLike = getDefaultStorage(),
+) {
+  return enqueueAiConfigurationMutation(() =>
+    saveAiConfigurationImmediately(value, keyStore, storage)
+  );
+}
+
+async function clearAiConfigurationImmediately(
   keyStore: AiApiKeyStore,
   storage: StorageLike = getDefaultStorage(),
 ) {
@@ -474,4 +741,13 @@ export async function clearAiConfiguration(
       "API Key 已清除，但无法清除其余 AI 设置。",
     );
   }
+}
+
+export function clearAiConfiguration(
+  keyStore: AiApiKeyStore,
+  storage: StorageLike = getDefaultStorage(),
+) {
+  return enqueueAiConfigurationMutation(() =>
+    clearAiConfigurationImmediately(keyStore, storage)
+  );
 }

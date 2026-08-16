@@ -13,26 +13,95 @@ test("platform key store remains server-render safe without localStorage", async
 });
 
 test("native API key store delegates to the secure plugin without exposing secrets", async () => {
-  let stored = "";
+  let stored = { value: "", connectionBinding: "" };
   const keyStore = createNativeApiKeyStore({
-    async save({ value }) {
-      stored = value;
+    async save({ value, connectionBinding = "" }) {
+      stored = { value, connectionBinding };
     },
     async load() {
-      return { value: stored };
+      return stored;
     },
     async clear() {
-      stored = "";
+      stored = { value: "", connectionBinding: "" };
     },
   });
 
   assert.equal(keyStore.security, "secure");
   assert.equal(await keyStore.getApiKey(), null);
-  await keyStore.setApiKey("  secret-value  ");
-  assert.equal(stored, "secret-value");
-  assert.equal(await keyStore.getApiKey(), "secret-value");
+  await keyStore.setApiKey("  secret-value  ", "provider-a");
+  assert.deepEqual(stored, {
+    value: "secret-value",
+    connectionBinding: "provider-a",
+  });
+  assert.equal(await keyStore.getApiKey("provider-a"), "secret-value");
+  assert.equal(await keyStore.getApiKey("provider-b"), null);
   await keyStore.removeApiKey();
   assert.equal(await keyStore.getApiKey(), null);
+});
+
+test("native API key store binds a legacy key before returning it", async () => {
+  let stored = { value: "legacy-secret" };
+  const writes = [];
+  const keyStore = createNativeApiKeyStore({
+    async save(options) {
+      writes.push(options);
+      stored = options;
+    },
+    async load() {
+      return stored;
+    },
+    async clear() {
+      stored = { value: "" };
+    },
+  });
+
+  assert.equal(await keyStore.getApiKey("provider-a"), "legacy-secret");
+  assert.deepEqual(writes, [{
+    value: "legacy-secret",
+    connectionBinding: "provider-a",
+  }]);
+  assert.equal(await keyStore.getApiKey("provider-b"), null);
+});
+
+test("native legacy-key migration is serialized with clear and cannot resurrect a key", async () => {
+  let stored = { value: "legacy-secret" };
+  let releaseLoad;
+  let reportLoadStarted;
+  const loadStarted = new Promise((resolve) => {
+    reportLoadStarted = resolve;
+  });
+  const loadGate = new Promise((resolve) => {
+    releaseLoad = resolve;
+  });
+  const operations = [];
+  const keyStore = createNativeApiKeyStore({
+    async save(options) {
+      operations.push("save");
+      stored = options;
+    },
+    async load() {
+      operations.push("load");
+      reportLoadStarted();
+      await loadGate;
+      return stored;
+    },
+    async clear() {
+      operations.push("clear");
+      stored = { value: "" };
+    },
+  });
+
+  const read = keyStore.getApiKey("provider-a");
+  await loadStarted;
+  const clear = keyStore.removeApiKey();
+  await Promise.resolve();
+  assert.deepEqual(operations, ["load"]);
+
+  releaseLoad();
+  assert.equal(await read, "legacy-secret");
+  await clear;
+  assert.deepEqual(operations, ["load", "save", "clear"]);
+  assert.equal(stored.value, "");
 });
 
 test("native API key store converts plugin failures to generic errors", async () => {

@@ -5,6 +5,7 @@ const PORT = Number(process.env.MOCK_AI_PORT ?? 4111);
 const EXPECTED_KEY = "qa-local-key";
 const stats = {
   requests: 0,
+  modelLists: 0,
   connectionTests: 0,
   partitionBatches: [],
 };
@@ -55,6 +56,25 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && request.url === "/stats") {
     writeJson(response, 200, stats);
+    return;
+  }
+
+  if (request.method === "GET" && request.url === "/v1/models") {
+    if (request.headers.authorization !== `Bearer ${EXPECTED_KEY}`) {
+      writeJson(response, 401, { error: "unauthorized" });
+      return;
+    }
+    stats.modelLists += 1;
+    writeJson(response, 200, {
+      object: "list",
+      data: [
+        {
+          id: "qa-chat-model",
+          object: "model",
+          owned_by: "quizdeck-local-fixture",
+        },
+      ],
+    });
     return;
   }
 

@@ -1,15 +1,44 @@
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
-
 import {
-  buildChatCompletionsUrl,
   isOfficialDeepSeekApiUrl,
   normalizeAiApiKey,
   validateAiSettings,
   type AiConfiguration,
 } from "./ai-config";
+import { buildAiProviderResourceUrl } from "./ai-providers";
+import {
+  AiClientError,
+  assertAiHttpResponseWithinLimit,
+  cancelledAiRequestError,
+  createDefaultAiHttpTransport,
+  throwForAiHttpStatus,
+  throwIfAiRequestCancelled,
+  type AiHttpResponse,
+  type AiHttpTransport,
+} from "./ai-transport";
+
+export {
+  MAX_AI_HTTP_REQUEST_CHARS,
+  MAX_AI_HTTP_RESPONSE_CHARS,
+  AiClientError,
+  assertAiHttpResponseWithinLimit,
+  cancelledAiRequestError,
+  cancelledError,
+  createCapacitorAiHttpTransport,
+  createDefaultAiHttpTransport,
+  createWebAiHttpTransport,
+  throwForAiHttpStatus,
+  throwIfAiRequestCancelled,
+  throwIfCancelled,
+} from "./ai-transport";
+export type {
+  AiClientErrorCode,
+  AiHttpGetRequest,
+  AiHttpRequest,
+  AiHttpResponse,
+  AiHttpTransport,
+} from "./ai-transport";
 
 export const MAX_AI_REQUEST_CHARS = 1_500_000;
-export const MAX_AI_HTTP_RESPONSE_CHARS = 320_000;
 export const MAX_AI_COMPLETION_CHARS = 240_000;
 export const MAX_AI_OUTPUT_TOKENS = 32_768;
 
@@ -21,66 +50,6 @@ export interface AiChatMessage {
 export interface AiCompletionOptions {
   maxOutputTokens?: number;
   signal?: AbortSignal;
-}
-
-export interface AiHttpRequest {
-  url: string;
-  headers: Readonly<Record<string, string>>;
-  body: Readonly<Record<string, unknown>>;
-  timeoutMs: number;
-  signal?: AbortSignal;
-}
-
-export interface AiHttpResponse {
-  status: number;
-  data: unknown;
-  headers?: Readonly<Record<string, string>>;
-}
-
-export interface AiHttpTransport {
-  postJson(request: AiHttpRequest): Promise<AiHttpResponse>;
-}
-
-export type AiClientErrorCode =
-  | "request-too-large"
-  | "response-too-large"
-  | "cancelled"
-  | "timeout"
-  | "network"
-  | "authentication"
-  | "payment-required"
-  | "not-found"
-  | "rate-limited"
-  | "invalid-parameters"
-  | "service-unavailable"
-  | "provider"
-  | "output-limit"
-  | "no-visible-output"
-  | "invalid-response";
-
-export class AiClientError extends Error {
-  readonly code: AiClientErrorCode;
-  readonly status?: number;
-
-  constructor(code: AiClientErrorCode, message: string, status?: number) {
-    super(message);
-    this.name = "AiClientError";
-    this.code = code;
-    this.status = status;
-  }
-}
-
-function cancelledError() {
-  return new AiClientError(
-    "cancelled",
-    "已取消 AI 请求。",
-  );
-}
-
-function throwIfCancelled(signal: AbortSignal | undefined) {
-  if (signal?.aborted) {
-    throw cancelledError();
-  }
 }
 
 function getHeader(
@@ -95,217 +64,6 @@ function getHeader(
     ([key]) => key.toLocaleLowerCase("en-US") === target,
   );
   return entry?.[1] ?? null;
-}
-
-async function readFetchResponseWithLimit(
-  response: Response,
-  maximumChars: number,
-) {
-  const declaredLength = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > maximumChars * 4) {
-    throw new AiClientError(
-      "response-too-large",
-      "AI 返回的数据过大，已停止读取。",
-    );
-  }
-
-  if (!response.body) {
-    const text = await response.text();
-    if (text.length > maximumChars) {
-      throw new AiClientError(
-        "response-too-large",
-        "AI 返回的数据过大，已停止读取。",
-      );
-    }
-    return text;
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  try {
-    while (true) {
-      const result = await reader.read();
-      if (result.done) {
-        text += decoder.decode();
-        break;
-      }
-      text += decoder.decode(result.value, { stream: true });
-      if (text.length > maximumChars) {
-        await reader.cancel();
-        throw new AiClientError(
-          "response-too-large",
-          "AI 返回的数据过大，已停止读取。",
-        );
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return text;
-}
-
-function browserFetchTransport(): AiHttpTransport {
-  return {
-    async postJson(request) {
-      throwIfCancelled(request.signal);
-      if (!globalThis.fetch) {
-        throw new AiClientError(
-          "network",
-          "当前环境不支持访问 AI 服务。",
-        );
-      }
-
-      const controller = new AbortController();
-      let timedOut = false;
-      const cancelRequest = () => controller.abort();
-      request.signal?.addEventListener("abort", cancelRequest, {
-        once: true,
-      });
-      const timeout = globalThis.setTimeout(
-        () => {
-          timedOut = true;
-          controller.abort();
-        },
-        request.timeoutMs,
-      );
-      try {
-        const response = await globalThis.fetch(request.url, {
-          method: "POST",
-          headers: request.headers,
-          body: JSON.stringify(request.body),
-          signal: controller.signal,
-          redirect: "error",
-          cache: "no-store",
-          credentials: "omit",
-        });
-        throwIfCancelled(request.signal);
-
-        if (!response.ok) {
-          return {
-            status: response.status,
-            data: null,
-            headers: Object.fromEntries(response.headers.entries()),
-          };
-        }
-
-        const text = await readFetchResponseWithLimit(
-          response,
-          MAX_AI_HTTP_RESPONSE_CHARS,
-        );
-        throwIfCancelled(request.signal);
-        return {
-          status: response.status,
-          data: text,
-          headers: Object.fromEntries(response.headers.entries()),
-        };
-      } catch (error) {
-        if (request.signal?.aborted) {
-          throw cancelledError();
-        }
-        if (error instanceof AiClientError) {
-          throw error;
-        }
-        if (
-          error instanceof DOMException &&
-          error.name === "AbortError"
-        ) {
-          throw new AiClientError(
-            timedOut ? "timeout" : "network",
-            timedOut
-              ? "AI 请求超时，请稍后重试。"
-              : "AI 请求被意外中止，请重试。",
-          );
-        }
-        throw new AiClientError(
-          "network",
-          "无法连接 AI 服务，请检查地址和网络。",
-        );
-      } finally {
-        globalThis.clearTimeout(timeout);
-        request.signal?.removeEventListener("abort", cancelRequest);
-      }
-    },
-  };
-}
-
-function nativeCapacitorTransport(): AiHttpTransport {
-  return {
-    async postJson(request) {
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      let cancelRequest: (() => void) | undefined;
-      throwIfCancelled(request.signal);
-      try {
-        const cancellation = new Promise<never>((_, reject) => {
-          if (!request.signal) {
-            return;
-          }
-          cancelRequest = () => reject(cancelledError());
-          request.signal.addEventListener("abort", cancelRequest, {
-            once: true,
-          });
-        });
-        const response = await Promise.race([
-          CapacitorHttp.request({
-            url: request.url,
-            method: "POST",
-            headers: { ...request.headers },
-            data: { ...request.body },
-            connectTimeout: request.timeoutMs,
-            readTimeout: request.timeoutMs,
-            disableRedirects: true,
-            responseType: "json",
-          }),
-          new Promise<never>((_, reject) => {
-            timeout = globalThis.setTimeout(
-              () =>
-                reject(
-                  new AiClientError(
-                    "timeout",
-                    "AI 请求超时，请稍后重试。",
-                  ),
-                ),
-              request.timeoutMs,
-            );
-          }),
-          cancellation,
-        ]);
-        throwIfCancelled(request.signal);
-        return {
-          status: response.status,
-          data: response.data,
-          headers: response.headers,
-        };
-      } catch (error) {
-        if (request.signal?.aborted) {
-          throw cancelledError();
-        }
-        if (error instanceof AiClientError) {
-          throw error;
-        }
-        throw new AiClientError(
-          "network",
-          "无法连接 AI 服务，请检查地址和网络。",
-        );
-      } finally {
-        if (timeout !== undefined) {
-          globalThis.clearTimeout(timeout);
-        }
-        if (cancelRequest) {
-          request.signal?.removeEventListener(
-            "abort",
-            cancelRequest,
-          );
-        }
-      }
-    },
-  };
-}
-
-export function createDefaultAiHttpTransport(): AiHttpTransport {
-  return Capacitor.isNativePlatform()
-    ? nativeCapacitorTransport()
-    : browserFetchTransport();
 }
 
 function normalizeOutputTokenLimit(value: number | undefined) {
@@ -351,73 +109,9 @@ function validateMessages(messages: readonly AiChatMessage[]) {
   }
 }
 
-function throwForHttpStatus(status: number) {
-  if (status === 401 || status === 403) {
-    throw new AiClientError(
-      "authentication",
-      `API Key 无效或没有访问该模型的权限（HTTP ${status}）。`,
-      status,
-    );
-  }
-  if (status === 402) {
-    throw new AiClientError(
-      "payment-required",
-      "AI 账户余额不足，请充值后重试（HTTP 402）。",
-      status,
-    );
-  }
-  if (status === 404) {
-    throw new AiClientError(
-      "not-found",
-      "AI 接口或模型不存在，请检查 API 地址和模型名称。",
-      status,
-    );
-  }
-  if (status === 408 || status === 504) {
-    throw new AiClientError(
-      "timeout",
-      "AI 服务响应超时，请稍后重试。",
-      status,
-    );
-  }
-  if (status === 429) {
-    throw new AiClientError(
-      "rate-limited",
-      "AI 服务请求过于频繁，请稍后重试（HTTP 429）。",
-      status,
-    );
-  }
-  if (status === 422) {
-    throw new AiClientError(
-      "invalid-parameters",
-      "AI 服务无法处理当前参数，请检查模型名称和接口配置（HTTP 422）。",
-      status,
-    );
-  }
-  if (status >= 500) {
-    throw new AiClientError(
-      "service-unavailable",
-      "AI 服务暂时不可用或繁忙，请稍后重试。",
-      status,
-    );
-  }
-  if (status < 200 || status >= 300) {
-    throw new AiClientError(
-      "provider",
-      "AI 服务拒绝了请求，请检查配置。",
-      status,
-    );
-  }
-}
-
 function parseResponseData(data: unknown) {
   if (typeof data === "string") {
-    if (data.length > MAX_AI_HTTP_RESPONSE_CHARS) {
-      throw new AiClientError(
-        "response-too-large",
-        "AI 返回的数据过大，已停止读取。",
-      );
-    }
+    assertAiHttpResponseWithinLimit(data);
     try {
       return JSON.parse(data) as unknown;
     } catch {
@@ -435,23 +129,7 @@ function parseResponseData(data: unknown) {
     );
   }
 
-  try {
-    const serialized = JSON.stringify(data);
-    if (serialized.length > MAX_AI_HTTP_RESPONSE_CHARS) {
-      throw new AiClientError(
-        "response-too-large",
-        "AI 返回的数据过大，已停止读取。",
-      );
-    }
-  } catch (error) {
-    if (error instanceof AiClientError) {
-      throw error;
-    }
-    throw new AiClientError(
-      "invalid-response",
-      "AI 服务返回了无法识别的数据。",
-    );
-  }
+  assertAiHttpResponseWithinLimit(data);
   return data;
 }
 
@@ -628,11 +306,15 @@ export interface OpenAiCompatibleClient {
 
 export function createOpenAiCompatibleClient(
   configuration: AiConfiguration,
-  transport: AiHttpTransport = createDefaultAiHttpTransport(),
+  transport: Pick<AiHttpTransport, "postJson"> =
+    createDefaultAiHttpTransport(),
 ): OpenAiCompatibleClient {
   const settings = validateAiSettings(configuration);
   const apiKey = normalizeAiApiKey(configuration.apiKey);
-  const endpoint = buildChatCompletionsUrl(settings.apiBaseUrl);
+  const endpoint = buildAiProviderResourceUrl(
+    settings.apiBaseUrl,
+    "chat/completions",
+  );
   const disableDeepSeekThinking =
     isOfficialDeepSeekApiUrl(settings.apiBaseUrl) &&
     (settings.model === "deepseek-v4-flash" ||
@@ -640,7 +322,7 @@ export function createOpenAiCompatibleClient(
 
   return {
     async complete(messages, options = {}) {
-      throwIfCancelled(options.signal);
+      throwIfAiRequestCancelled(options.signal);
       validateMessages(messages);
       let response: AiHttpResponse;
       try {
@@ -666,7 +348,7 @@ export function createOpenAiCompatibleClient(
         });
       } catch (error) {
         if (options.signal?.aborted) {
-          throw cancelledError();
+          throw cancelledAiRequestError();
         }
         if (error instanceof AiClientError) {
           throw error;
@@ -677,10 +359,10 @@ export function createOpenAiCompatibleClient(
         );
       }
 
-      throwIfCancelled(options.signal);
-      throwForHttpStatus(response.status);
+      throwIfAiRequestCancelled(options.signal);
+      throwForAiHttpStatus(response.status);
       const content = extractAssistantText(response.data);
-      throwIfCancelled(options.signal);
+      throwIfAiRequestCancelled(options.signal);
       return content;
     },
   };
@@ -693,6 +375,7 @@ export interface AiConnectionTestResult {
 
 export async function testAiConnection(
   client: OpenAiCompatibleClient,
+  options: { signal?: AbortSignal } = {},
 ): Promise<AiConnectionTestResult> {
   const startedAt = Date.now();
   const messages: AiChatMessage[] = [
@@ -704,7 +387,10 @@ export async function testAiConnection(
     { role: "user", content: "连接测试" },
   ];
   try {
-    await client.complete(messages, { maxOutputTokens: 1_024 });
+    await client.complete(messages, {
+      maxOutputTokens: 1_024,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
   } catch (error) {
     if (
       !(error instanceof AiClientError) ||
@@ -713,7 +399,10 @@ export async function testAiConnection(
     ) {
       throw error;
     }
-    await client.complete(messages, { maxOutputTokens: 4_096 });
+    await client.complete(messages, {
+      maxOutputTokens: 4_096,
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
   }
   return {
     ok: true,

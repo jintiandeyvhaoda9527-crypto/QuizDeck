@@ -9,8 +9,8 @@ import {
 } from "./ai-config";
 
 interface SecureApiKeyPlugin {
-  save(options: { value: string }): Promise<void>;
-  load(): Promise<{ value?: string }>;
+  save(options: { value: string; connectionBinding?: string }): Promise<void>;
+  load(): Promise<{ value?: string; connectionBinding?: string }>;
   clear(): Promise<void>;
 }
 
@@ -19,39 +19,79 @@ const SecureApiKey = registerPlugin<SecureApiKeyPlugin>("SecureApiKey");
 export function createNativeApiKeyStore(
   plugin: SecureApiKeyPlugin = SecureApiKey,
 ): AiApiKeyStore {
+  let operationQueue: Promise<void> = Promise.resolve();
+  const enqueue = <T>(operation: () => Promise<T>) => {
+    const result = operationQueue.then(operation, operation);
+    operationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  };
+
   return {
     security: "secure",
-    async getApiKey() {
-      try {
-        const result = await plugin.load();
-        return result.value?.trim() || null;
-      } catch {
-        throw new AiConfigurationError(
-          "key-storage-unavailable",
-          "无法从 Android 系统密钥库读取 API Key。",
-        );
-      }
+    getApiKey(expectedConnectionBinding) {
+      return enqueue(async () => {
+        try {
+          const result = await plugin.load();
+          const value = result.value?.trim();
+          if (!value) {
+            return null;
+          }
+          if (expectedConnectionBinding) {
+            if (
+              result.connectionBinding &&
+              result.connectionBinding !== expectedConnectionBinding
+            ) {
+              return null;
+            }
+            if (!result.connectionBinding) {
+              // Bind an existing pre-v2 Android key in place. Keep load and
+              // save inside this store's queue so a concurrent clear cannot
+              // be followed by a stale migration that resurrects the key.
+              await plugin.save({
+                value,
+                connectionBinding: expectedConnectionBinding,
+              });
+            }
+          }
+          return value;
+        } catch {
+          throw new AiConfigurationError(
+            "key-storage-unavailable",
+            "无法从 Android 系统密钥库读取 API Key。",
+          );
+        }
+      });
     },
-    async setApiKey(value: string) {
-      const apiKey = normalizeAiApiKey(value);
-      try {
-        await plugin.save({ value: apiKey });
-      } catch {
-        throw new AiConfigurationError(
-          "key-storage-unavailable",
-          "无法将 API Key 保存到 Android 系统密钥库。",
-        );
-      }
+    setApiKey(value: string, connectionBinding) {
+      return enqueue(async () => {
+        const apiKey = normalizeAiApiKey(value);
+        try {
+          await plugin.save({
+            value: apiKey,
+            ...(connectionBinding ? { connectionBinding } : {}),
+          });
+        } catch {
+          throw new AiConfigurationError(
+            "key-storage-unavailable",
+            "无法将 API Key 保存到 Android 系统密钥库。",
+          );
+        }
+      });
     },
-    async removeApiKey() {
-      try {
-        await plugin.clear();
-      } catch {
-        throw new AiConfigurationError(
-          "key-storage-unavailable",
-          "无法从 Android 系统密钥库清除 API Key。",
-        );
-      }
+    removeApiKey() {
+      return enqueue(async () => {
+        try {
+          await plugin.clear();
+        } catch {
+          throw new AiConfigurationError(
+            "key-storage-unavailable",
+            "无法从 Android 系统密钥库清除 API Key。",
+          );
+        }
+      });
     },
   };
 }

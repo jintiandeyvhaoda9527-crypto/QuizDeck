@@ -4,6 +4,7 @@ const config: CapacitorConfig = {
   appId: "app.quizdeck.mobile",
   appName: "QuizDeck",
   webDir: "android-web",
+  loggingBehavior: "none",
   server: {
     androidScheme: "https",
   },

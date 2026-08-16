@@ -61,3 +61,57 @@ test("Android build does not load the unused Google Services plugin", async () =
   assert.doesNotMatch(rootBuild, /com\.google\.gms:google-services/);
   assert.doesNotMatch(appBuild, /com\.google\.gms\.google-services/);
 });
+
+test("Capacitor never logs native plugin arguments in debug or release builds", async () => {
+  const config = await readFile(
+    new URL("../capacitor.config.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(config, /loggingBehavior:\s*"none"/u);
+  assert.doesNotMatch(config, /loggingBehavior:\s*"(?:debug|production)"/u);
+});
+
+test("Android secure key records commit and clear their connection binding atomically", async () => {
+  const plugin = await readFile(
+    new URL(
+      "../android/app/src/main/java/app/quizdeck/mobile/SecureApiKeyPlugin.java",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(plugin, /\.putString\(CIPHERTEXT,[^\r\n]+\)\s*\.putString\(IV,[^\r\n]+\)\s*\.putString\(CONNECTION_BINDING,[^\r\n]+\)\s*\.commit\(\)/u);
+  assert.match(plugin, /\.remove\(CIPHERTEXT\)\s*\.remove\(IV\)\s*\.remove\(CONNECTION_BINDING\)\s*\.commit\(\)/u);
+});
+
+test("Android AI HTTP transport is cancellable, bounded, and does not read error bodies", async () => {
+  const [plugin, activity, transport] = await Promise.all([
+    readFile(
+      new URL(
+        "../android/app/src/main/java/app/quizdeck/mobile/AiHttpPlugin.java",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../android/app/src/main/java/app/quizdeck/mobile/MainActivity.java",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(new URL("../app/ai-transport.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(activity, /registerPlugin\(AiHttpPlugin\.class\)/u);
+  assert.match(plugin, /ConcurrentHashMap<String, RequestState>/u);
+  assert.match(plugin, /state\.cancel\(\)/u);
+  assert.match(plugin, /connection\.disconnect\(\)/u);
+  assert.match(plugin, /setInstanceFollowRedirects\(false\)/u);
+  assert.match(plugin, /MAX_RESPONSE_CHARS = 320_000/u);
+  assert.match(plugin, /status < 200 \|\| status >= 300/u);
+  assert.doesNotMatch(plugin, /getErrorStream\(/u);
+  assert.match(transport, /registerPlugin<NativeAiHttpPlugin>\("AiHttp"\)/u);
+  assert.match(transport, /NativeAiHttp\.cancel\(\{ requestId \}\)/u);
+});

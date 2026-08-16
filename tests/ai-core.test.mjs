@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   AI_PARTITION_BATCH_SIZE,
+  AI_SETTINGS_LEGACY_STORAGE_KEY,
   AI_SETTINGS_STORAGE_KEY,
   AI_WEB_PREVIEW_KEY_STORAGE_KEY,
   DEEPSEEK_API_BASE_URL,
@@ -154,17 +155,136 @@ test("DeepSeek 官方旧模型名迁移到 V4，第三方同名模型保持不�
   );
 
   const storage = createStorage({
-    [AI_SETTINGS_STORAGE_KEY]: JSON.stringify({
+    [AI_SETTINGS_LEGACY_STORAGE_KEY]: JSON.stringify({
       apiBaseUrl: "https://api.deepseek.com",
       model: "deepseek-chat",
       timeoutMs: 60_000,
     }),
   });
   assert.deepEqual(readAiSettings(storage), {
+    providerId: "deepseek",
+    protocol: "openai-chat",
     apiBaseUrl: "https://api.deepseek.com",
     model: "deepseek-v4-flash",
     timeoutMs: 60_000,
   });
+  assert.equal(
+    storage.snapshot()[AI_SETTINGS_LEGACY_STORAGE_KEY],
+    undefined,
+  );
+  assert.ok(storage.snapshot()[AI_SETTINGS_STORAGE_KEY]);
+});
+
+test("v1 自定义配置迁移到 v2 并保留旧版 /v1 路径语义和单密钥", async () => {
+  const storage = createStorage({
+    [AI_SETTINGS_LEGACY_STORAGE_KEY]: JSON.stringify({
+      apiBaseUrl: "https://compatible.example.com",
+      model: "chat-model",
+      timeoutMs: 9_000,
+    }),
+  });
+  const keyStore = createMemoryApiKeyStore("existing-secure-key");
+
+  assert.deepEqual(await loadAiConfiguration(keyStore, storage), {
+    providerId: "custom-openai",
+    protocol: "openai-chat",
+    apiBaseUrl: "https://compatible.example.com/v1",
+    model: "chat-model",
+    timeoutMs: 9_000,
+    apiKey: "existing-secure-key",
+  });
+  assert.equal(
+    storage.snapshot()[AI_SETTINGS_LEGACY_STORAGE_KEY],
+    undefined,
+  );
+  assert.equal(await keyStore.getApiKey(), "existing-secure-key");
+});
+
+test("v2 配置优先且损坏记录不会降级读取 v1", () => {
+  const legacy = JSON.stringify({
+    apiBaseUrl: "https://api.deepseek.com",
+    model: "deepseek-chat",
+  });
+  const v2 = {
+    providerId: "custom-openai",
+    protocol: "openai-chat",
+    apiBaseUrl: "https://compatible.example.com/v1",
+    model: "model-v2",
+    timeoutMs: 12_000,
+  };
+  const storage = createStorage({
+    [AI_SETTINGS_STORAGE_KEY]: JSON.stringify(v2),
+    [AI_SETTINGS_LEGACY_STORAGE_KEY]: legacy,
+  });
+  assert.deepEqual(readAiSettings(storage), v2);
+
+  const invalidStorage = createStorage({
+    [AI_SETTINGS_STORAGE_KEY]: JSON.stringify({
+      ...v2,
+      protocol: "anthropic-messages",
+    }),
+    [AI_SETTINGS_LEGACY_STORAGE_KEY]: legacy,
+  });
+  assert.equal(readAiSettings(invalidStorage), null);
+  assert.ok(invalidStorage.snapshot()[AI_SETTINGS_LEGACY_STORAGE_KEY]);
+
+  const emptyV2Storage = createStorage({
+    [AI_SETTINGS_STORAGE_KEY]: "",
+    [AI_SETTINGS_LEGACY_STORAGE_KEY]: legacy,
+  });
+  assert.equal(readAiSettings(emptyV2Storage), null);
+  assert.ok(emptyV2Storage.snapshot()[AI_SETTINGS_LEGACY_STORAGE_KEY]);
+
+  for (const tampered of [
+    { ...v2, providerId: "unknown-provider" },
+    {
+      ...v2,
+      providerId: "openai",
+      apiBaseUrl: "https://attacker.example.com/v1",
+    },
+  ]) {
+    assert.equal(
+      readAiSettings(
+        createStorage({
+          [AI_SETTINGS_STORAGE_KEY]: JSON.stringify(tampered),
+        }),
+      ),
+      null,
+    );
+  }
+});
+
+test("v1 迁移写入失败时仍可读取且不会删除旧记录", () => {
+  const values = new Map([
+    [
+      AI_SETTINGS_LEGACY_STORAGE_KEY,
+      JSON.stringify({
+        apiBaseUrl: "https://legacy.example.com/v1",
+        model: "legacy-model",
+      }),
+    ],
+  ]);
+  const storage = {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem() {
+      throw new Error("storage full");
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+  };
+
+  assert.deepEqual(readAiSettings(storage), {
+    providerId: "custom-openai",
+    protocol: "openai-chat",
+    apiBaseUrl: "https://legacy.example.com/v1",
+    model: "legacy-model",
+    timeoutMs: 60_000,
+  });
+  assert.ok(values.has(AI_SETTINGS_LEGACY_STORAGE_KEY));
+  assert.equal(values.has(AI_SETTINGS_STORAGE_KEY), false);
 });
 
 test("普通设置与 API Key 分开保存，网页降级存储明确标记为预览", async () => {
@@ -189,15 +309,19 @@ test("普通设置与 API Key 分开保存，网页降级存储明确标记为�
     false,
   );
   assert.equal(
-    snapshot[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    JSON.parse(snapshot[AI_WEB_PREVIEW_KEY_STORAGE_KEY]).apiKey,
     "secret-key-value",
   );
   assert.deepEqual(readAiSettings(storage), {
+    providerId: "custom-openai",
+    protocol: "openai-chat",
     apiBaseUrl: "https://api.example.com/v1",
     model: "compatible-model",
     timeoutMs: 60_000,
   });
   assert.deepEqual(await loadAiConfiguration(keyStore, storage), {
+    providerId: "custom-openai",
+    protocol: "openai-chat",
     apiBaseUrl: "https://api.example.com/v1",
     model: "compatible-model",
     timeoutMs: 60_000,
@@ -263,7 +387,9 @@ test("网页预览默认仅把 API Key 存入 sessionStorage", async (t) => {
   );
 
   assert.equal(
-    sessionStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    JSON.parse(
+      sessionStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    ).apiKey,
     "session-only-secret",
   );
   assert.equal(
@@ -297,6 +423,273 @@ test("可注入安全 KeyStore，普通设置读取不到密钥", async () => {
   assert.equal(await keyStore.getApiKey(), "key-in-secure-store");
 });
 
+test("并发保存按顺序提交，失败回滚不会破坏已成功配置", async () => {
+  const storage = createStorage();
+  const originalSetItem = storage.setItem.bind(storage);
+  storage.setItem = (key, value) => {
+    if (
+      key === AI_SETTINGS_STORAGE_KEY &&
+      JSON.parse(String(value)).model === "model-b"
+    ) {
+      throw new Error("storage full");
+    }
+    originalSetItem(key, value);
+  };
+
+  let storedKey = "key-original";
+  const keyWrites = [];
+  const keyStore = {
+    security: "memory",
+    async getApiKey() {
+      return storedKey;
+    },
+    async setApiKey(value) {
+      storedKey = value;
+      keyWrites.push(value);
+    },
+    async removeApiKey() {
+      storedKey = null;
+    },
+  };
+
+  const firstSave = saveAiConfiguration(
+    {
+      apiBaseUrl: "https://api.example.com/v1",
+      model: "model-a",
+      apiKey: "key-a",
+    },
+    keyStore,
+    storage,
+  );
+  const secondSave = saveAiConfiguration(
+    {
+      apiBaseUrl: "https://api.example.com/v1",
+      model: "model-b",
+      apiKey: "key-b",
+    },
+    keyStore,
+    storage,
+  );
+
+  await firstSave;
+  await assert.rejects(
+    secondSave,
+    (error) =>
+      error instanceof AiConfigurationError &&
+      error.code === "settings-storage-unavailable",
+  );
+  assert.deepEqual(keyWrites, ["key-a", "key-b", "key-a"]);
+  assert.equal(storedKey, "key-a");
+  assert.equal(readAiSettings(storage)?.model, "model-a");
+});
+
+test("网页密钥绑定服务商和地址，跨标签页设置变化不会错配 Key", async () => {
+  const sharedSettings = createStorage();
+  const tabAKeys = createStorage();
+  const tabBKeys = createStorage();
+  const tabAKeyStore = createWebPreviewApiKeyStore(tabAKeys);
+  const tabBKeyStore = createWebPreviewApiKeyStore(tabBKeys);
+
+  await saveAiConfiguration(
+    {
+      providerId: "openai",
+      protocol: "openai-chat",
+      apiBaseUrl: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      apiKey: "key-for-tab-a",
+    },
+    tabAKeyStore,
+    sharedSettings,
+  );
+  await saveAiConfiguration(
+    {
+      providerId: "custom-openai",
+      protocol: "openai-chat",
+      apiBaseUrl: "https://other-tab.example/v1",
+      model: "other-model",
+      apiKey: "key-for-tab-b",
+    },
+    tabBKeyStore,
+    sharedSettings,
+  );
+
+  assert.equal(
+    await loadAiConfiguration(tabAKeyStore, sharedSettings),
+    null,
+  );
+  assert.deepEqual(
+    await loadAiConfiguration(tabBKeyStore, sharedSettings),
+    {
+      providerId: "custom-openai",
+      protocol: "openai-chat",
+      apiBaseUrl: "https://other-tab.example/v1",
+      model: "other-model",
+      timeoutMs: 60_000,
+      apiKey: "key-for-tab-b",
+    },
+  );
+  assert.equal(
+    JSON.stringify(sharedSettings.snapshot()).includes("key-for-tab"),
+    false,
+  );
+});
+
+test("未绑定的旧网页密钥不会与 v2 设置拼接并会从会话中移除", async () => {
+  const settingsStorage = createStorage({
+    [AI_SETTINGS_STORAGE_KEY]: JSON.stringify({
+      providerId: "custom-openai",
+      protocol: "openai-chat",
+      apiBaseUrl: "https://api.example.com/v1",
+      model: "model-a",
+      timeoutMs: 60_000,
+    }),
+  });
+  const keyStorage = createStorage({
+    [AI_WEB_PREVIEW_KEY_STORAGE_KEY]: "legacy-unbound-key",
+  });
+  const keyStore = createWebPreviewApiKeyStore(keyStorage);
+
+  assert.equal(
+    await loadAiConfiguration(keyStore, settingsStorage),
+    null,
+  );
+  assert.equal(
+    keyStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    undefined,
+  );
+});
+
+test("网页设置写入失败时会恢复原密钥及其连接绑定", async () => {
+  const settingsStorage = createStorage();
+  const keyStorage = createStorage();
+  const keyStore = createWebPreviewApiKeyStore(keyStorage);
+  const originalConfiguration = {
+    providerId: "openai",
+    protocol: "openai-chat",
+    apiBaseUrl: "https://api.openai.com/v1",
+    model: "gpt-4.1-mini",
+    apiKey: "key-a",
+  };
+  await saveAiConfiguration(
+    originalConfiguration,
+    keyStore,
+    settingsStorage,
+  );
+  const originalKeyRecord =
+    keyStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY];
+  const originalSetItem = settingsStorage.setItem.bind(settingsStorage);
+  settingsStorage.setItem = (key, value) => {
+    if (
+      key === AI_SETTINGS_STORAGE_KEY &&
+      JSON.parse(String(value)).model === "model-b"
+    ) {
+      throw new Error("storage full");
+    }
+    originalSetItem(key, value);
+  };
+
+  await assert.rejects(
+    saveAiConfiguration(
+      {
+        providerId: "custom-openai",
+        protocol: "openai-chat",
+        apiBaseUrl: "https://other.example/v1",
+        model: "model-b",
+        apiKey: "key-b",
+      },
+      keyStore,
+      settingsStorage,
+    ),
+    (error) =>
+      error instanceof AiConfigurationError &&
+      error.code === "settings-storage-unavailable",
+  );
+
+  assert.equal(
+    keyStorage.snapshot()[AI_WEB_PREVIEW_KEY_STORAGE_KEY],
+    originalKeyRecord,
+  );
+  assert.deepEqual(
+    await loadAiConfiguration(keyStore, settingsStorage),
+    {
+      ...originalConfiguration,
+      timeoutMs: 60_000,
+    },
+  );
+});
+
+test("安全存储回滚也失败时连接绑定会阻止新 Key 配对旧地址", async () => {
+  const settingsStorage = createStorage();
+  let storedRecord = { value: null, connectionBinding: null };
+  let rejectRollback = false;
+  const bindingKeyStore = {
+    security: "secure",
+    async getApiKey(expectedConnectionBinding) {
+      if (
+        expectedConnectionBinding &&
+        storedRecord.connectionBinding !== expectedConnectionBinding
+      ) {
+        return null;
+      }
+      return storedRecord.value;
+    },
+    async setApiKey(value, connectionBinding) {
+      if (rejectRollback && value === "key-a") {
+        throw new Error("secure rollback failed");
+      }
+      storedRecord = { value, connectionBinding };
+    },
+    async removeApiKey() {
+      storedRecord = { value: null, connectionBinding: null };
+    },
+  };
+
+  await saveAiConfiguration(
+    {
+      providerId: "openai",
+      protocol: "openai-chat",
+      apiBaseUrl: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      apiKey: "key-a",
+    },
+    bindingKeyStore,
+    settingsStorage,
+  );
+  const originalSetItem = settingsStorage.setItem.bind(settingsStorage);
+  settingsStorage.setItem = (key, value) => {
+    if (
+      key === AI_SETTINGS_STORAGE_KEY &&
+      JSON.parse(String(value)).model === "model-b"
+    ) {
+      throw new Error("storage full");
+    }
+    originalSetItem(key, value);
+  };
+  rejectRollback = true;
+
+  await assert.rejects(
+    saveAiConfiguration(
+      {
+        providerId: "custom-openai",
+        protocol: "openai-chat",
+        apiBaseUrl: "https://other.example/v1",
+        model: "model-b",
+        apiKey: "key-b",
+      },
+      bindingKeyStore,
+      settingsStorage,
+    ),
+    (error) =>
+      error instanceof AiConfigurationError &&
+      error.code === "settings-storage-unavailable",
+  );
+  assert.equal(storedRecord.value, "key-b");
+  assert.equal(
+    await loadAiConfiguration(bindingKeyStore, settingsStorage),
+    null,
+  );
+});
+
 test("清除配置会同时移除普通设置和安全存储中的密钥", async () => {
   const storage = createStorage();
   const keyStore = createMemoryApiKeyStore();
@@ -309,10 +702,18 @@ test("清除配置会同时移除普通设置和安全存储中的密钥", async
     keyStore,
     storage,
   );
+  storage.setItem(
+    AI_SETTINGS_LEGACY_STORAGE_KEY,
+    JSON.stringify({ apiBaseUrl: "https://legacy.example.com", model: "old" }),
+  );
 
   await clearAiConfiguration(keyStore, storage);
 
   assert.equal(storage.snapshot()[AI_SETTINGS_STORAGE_KEY], undefined);
+  assert.equal(
+    storage.snapshot()[AI_SETTINGS_LEGACY_STORAGE_KEY],
+    undefined,
+  );
   assert.equal(await keyStore.getApiKey(), null);
   assert.equal(await loadAiConfiguration(keyStore, storage), null);
 });
@@ -394,7 +795,7 @@ test("DeepSeek V4 请求关闭思考并使用迁移后的当前模型", async ()
   );
   assert.equal(
     capturedRequest.url,
-    "https://api.deepseek.com/v1/chat/completions",
+    "https://api.deepseek.com/chat/completions",
   );
   assert.equal(capturedRequest.body.model, "deepseek-v4-flash");
   assert.deepEqual(capturedRequest.body.thinking, { type: "disabled" });
@@ -515,11 +916,11 @@ test("核心错误可按 code 映射为中英安全消息且不回显原始正�
 
   assert.equal(
     getCoreErrorMessage("zh-CN", error),
-    "API Key 无效，或无权访问所选模型。",
+    "API Key 无效。",
   );
   assert.equal(
     getCoreErrorMessage("en-US", error),
-    "The API key is invalid or cannot access the selected model.",
+    "The API key is invalid.",
   );
   assert.equal(
     getCoreErrorMessage("en-US", error)?.includes(rawSecret),

@@ -25,13 +25,20 @@ public class SecureApiKeyPlugin extends Plugin {
     private static final String PREFERENCES = "quizdeck_secure_ai_preferences";
     private static final String CIPHERTEXT = "api_key_ciphertext";
     private static final String IV = "api_key_iv";
+    private static final String CONNECTION_BINDING = "api_key_connection_binding";
     private static final int MAX_API_KEY_LENGTH = 8192;
+    private static final int MAX_CONNECTION_BINDING_LENGTH = 4096;
 
     @PluginMethod
     public void save(PluginCall call) {
         String value = call.getString("value");
+        String connectionBinding = call.getString("connectionBinding", "");
         if (value == null || value.isBlank() || value.length() > MAX_API_KEY_LENGTH) {
             call.reject("Invalid API key");
+            return;
+        }
+        if (connectionBinding.length() > MAX_CONNECTION_BINDING_LENGTH) {
+            call.reject("Invalid API key connection binding");
             return;
         }
 
@@ -44,6 +51,7 @@ public class SecureApiKeyPlugin extends Plugin {
                 .edit()
                 .putString(CIPHERTEXT, Base64.encodeToString(ciphertext, Base64.NO_WRAP))
                 .putString(IV, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
+                .putString(CONNECTION_BINDING, connectionBinding)
                 .commit();
             if (!saved) {
                 call.reject("Unable to save API key");
@@ -60,6 +68,7 @@ public class SecureApiKeyPlugin extends Plugin {
         SharedPreferences preferences = getPreferences();
         String encodedCiphertext = preferences.getString(CIPHERTEXT, null);
         String encodedIv = preferences.getString(IV, null);
+        String connectionBinding = preferences.getString(CONNECTION_BINDING, "");
         JSObject result = new JSObject();
 
         if (encodedCiphertext == null || encodedIv == null) {
@@ -82,9 +91,15 @@ public class SecureApiKeyPlugin extends Plugin {
                 StandardCharsets.UTF_8
             );
             result.put("value", value);
+            result.put("connectionBinding", connectionBinding);
             call.resolve(result);
         } catch (Exception error) {
-            getPreferences().edit().remove(CIPHERTEXT).remove(IV).apply();
+            getPreferences()
+                .edit()
+                .remove(CIPHERTEXT)
+                .remove(IV)
+                .remove(CONNECTION_BINDING)
+                .apply();
             call.reject("Stored API key is no longer available");
         }
     }
@@ -95,6 +110,7 @@ public class SecureApiKeyPlugin extends Plugin {
             .edit()
             .remove(CIPHERTEXT)
             .remove(IV)
+            .remove(CONNECTION_BINDING)
             .commit();
         if (cleared) {
             call.resolve();
