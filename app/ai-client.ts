@@ -48,8 +48,11 @@ export type AiClientErrorCode =
   | "timeout"
   | "network"
   | "authentication"
+  | "payment-required"
   | "not-found"
   | "rate-limited"
+  | "invalid-parameters"
+  | "service-unavailable"
   | "provider"
   | "output-limit"
   | "no-visible-output"
@@ -358,7 +361,7 @@ function throwForHttpStatus(status: number) {
   }
   if (status === 402) {
     throw new AiClientError(
-      "provider",
+      "payment-required",
       "AI 账户余额不足，请充值后重试（HTTP 402）。",
       status,
     );
@@ -386,17 +389,22 @@ function throwForHttpStatus(status: number) {
   }
   if (status === 422) {
     throw new AiClientError(
-      "provider",
+      "invalid-parameters",
       "AI 服务无法处理当前参数，请检查模型名称和接口配置（HTTP 422）。",
+      status,
+    );
+  }
+  if (status >= 500) {
+    throw new AiClientError(
+      "service-unavailable",
+      "AI 服务暂时不可用或繁忙，请稍后重试。",
       status,
     );
   }
   if (status < 200 || status >= 300) {
     throw new AiClientError(
       "provider",
-      status >= 500
-        ? "AI 服务暂时不可用，请稍后重试。"
-        : "AI 服务拒绝了请求，请检查配置。",
+      "AI 服务拒绝了请求，请检查配置。",
       status,
     );
   }
@@ -574,7 +582,7 @@ export function extractAssistantText(data: unknown) {
     .find((candidate): candidate is string => Boolean(candidate));
   if (finishReason === "insufficient_system_resource") {
     throw new AiClientError(
-      "provider",
+      "service-unavailable",
       "DeepSeek 服务当前繁忙，没有完成本次生成，请稍后重试。",
     );
   }

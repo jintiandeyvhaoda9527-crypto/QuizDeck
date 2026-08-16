@@ -68,6 +68,7 @@ import {
 } from "./demo-bank-preference";
 import { useI18n } from "./i18n";
 import { getCoreErrorMessage } from "./i18n/core-messages";
+import { getLibraryErrorMessage } from "./i18n/library-messages";
 import {
   AiConfigScreen,
   AiPartitionConfirmScreen,
@@ -1182,9 +1183,7 @@ export function QuizApp() {
     } catch (error) {
       setDuplicateBankName(null);
       setImportError(
-        error instanceof Error
-          ? error.message
-          : t("quiz.error.fileParse"),
+        getLibraryErrorMessage(locale, error) ?? t("quiz.error.fileParse"),
       );
     } finally {
       setImportBusy(false);
@@ -1218,9 +1217,7 @@ export function QuizApp() {
       setScreen("bank");
     } catch (error) {
       setImportError(
-        error instanceof Error
-          ? error.message
-          : t("quiz.error.bankSave"),
+        getLibraryErrorMessage(locale, error) ?? t("quiz.error.bankSave"),
       );
     } finally {
       setImportBusy(false);
@@ -1270,9 +1267,8 @@ export function QuizApp() {
       setScreen("partitions");
     } catch (error) {
       setOperationError(
-        error instanceof Error
-          ? error.message
-          : t("quiz.error.partitionSave"),
+        getLibraryErrorMessage(locale, error) ??
+          t("quiz.error.partitionSave"),
       );
     }
   };
@@ -1316,9 +1312,7 @@ export function QuizApp() {
       setRenameBankOpen(false);
     } catch (error) {
       setOperationError(
-        error instanceof Error
-          ? error.message
-          : t("quiz.error.bankRename"),
+        getLibraryErrorMessage(locale, error) ?? t("quiz.error.bankRename"),
       );
     } finally {
       setOperationBusy(false);
@@ -1364,9 +1358,7 @@ export function QuizApp() {
       setScreen("home");
     } catch (error) {
       setOperationError(
-        error instanceof Error
-          ? error.message
-          : t("quiz.error.bankDelete"),
+        getLibraryErrorMessage(locale, error) ?? t("quiz.error.bankDelete"),
       );
     } finally {
       setOperationBusy(false);

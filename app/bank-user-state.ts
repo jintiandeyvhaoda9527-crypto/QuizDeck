@@ -9,6 +9,22 @@ export const BANK_USER_STATE_STORAGE_KEY = "quizdeck:bank-user-state:v1";
 
 export type BankUserStates = Record<string, BankUserState | undefined>;
 
+export type BankUserStateErrorCode =
+  | "empty-partition-name"
+  | "empty-partition-selection"
+  | "empty-partition-id"
+  | "duplicate-partition-id"
+  | "invalid-partition-created-at"
+  | "partition-not-found";
+
+export class BankUserStateError extends Error {
+  override readonly name = "BankUserStateError";
+
+  constructor(readonly code: BankUserStateErrorCode) {
+    super(code);
+  }
+}
+
 function sanitizePartition(
   value: unknown,
   validQuestionIds: ReadonlySet<string>,
@@ -121,7 +137,7 @@ function normalizePartitionInput(
 ) {
   const name = input.name.trim();
   if (!name) {
-    throw new Error("分区名称不能为空");
+    throw new BankUserStateError("empty-partition-name");
   }
 
   const requestedIds = new Set(input.questionIds);
@@ -129,7 +145,7 @@ function normalizePartitionInput(
     .map((question) => question.id)
     .filter((questionId) => requestedIds.has(questionId));
   if (questionIds.length === 0) {
-    throw new Error("分区至少需要包含一道有效题目");
+    throw new BankUserStateError("empty-partition-selection");
   }
 
   return { name, questionIds };
@@ -141,16 +157,16 @@ export function createCustomPartition(
   partition: CustomPartition,
 ): BankUserState {
   if (!partition.id.trim()) {
-    throw new Error("分区 ID 不能为空");
+    throw new BankUserStateError("empty-partition-id");
   }
   if (state.partitions.some((item) => item.id === partition.id)) {
-    throw new Error("分区 ID 已存在");
+    throw new BankUserStateError("duplicate-partition-id");
   }
   if (
     !partition.createdAt ||
     Number.isNaN(Date.parse(partition.createdAt))
   ) {
-    throw new Error("分区创建时间无效");
+    throw new BankUserStateError("invalid-partition-created-at");
   }
 
   const normalized = normalizePartitionInput(bank, partition);
@@ -177,7 +193,7 @@ export function updateCustomPartition(
     (partition) => partition.id === partitionId,
   );
   if (partitionIndex < 0) {
-    throw new Error("未找到要修改的分区");
+    throw new BankUserStateError("partition-not-found");
   }
 
   const normalized = normalizePartitionInput(bank, input);

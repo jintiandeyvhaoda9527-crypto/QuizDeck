@@ -14,7 +14,12 @@ export async function generateMetadata(): Promise<Metadata> {
     .get("x-forwarded-proto")
     ?.split(",")[0]
     .trim();
-  const protocol = forwardedProtocol || (host.startsWith("localhost") ? "http" : "https");
+  const hostname = host.replace(/^\[|\](?::\d+)?$|:\d+$/g, "").toLowerCase();
+  const isLoopback =
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    /^127(?:\.\d{1,3}){3}$/.test(hostname);
+  const protocol = forwardedProtocol || (isLoopback ? "http" : "https");
   let metadataBase: URL;
 
   try {

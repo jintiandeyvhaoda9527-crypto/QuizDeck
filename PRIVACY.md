@@ -6,7 +6,7 @@ QuizDeck is an offline-first client. It has no bundled analytics service, advert
 
 Depending on the platform, QuizDeck stores imported question banks, answer sessions, progress, mistake IDs, user-created partitions, the selected model settings, and a dismissal flag for the optional demo bank in browser-compatible local storage or IndexedDB.
 
-On Android, the user-provided API key is encrypted before storage with an AES-GCM key generated and protected by Android Keystore. Backup rules exclude the encrypted API-key preference file. Removing the app or clearing its data removes locally stored QuizDeck data according to the operating system's behavior.
+On Android, the user-provided API key is encrypted before storage with an AES-GCM key generated and protected by Android Keystore. Android application backup is disabled so question banks, learning records, partitions, and encrypted key material are not intentionally included in cloud backup or device-transfer archives. Removing the app or clearing its data removes locally stored QuizDeck data according to the operating system's behavior.
 
 The web preview cannot provide Android Keystore protection. Its API key is kept in browser session storage and is removed when that browser session is cleared; QuizDeck also removes its legacy persistent key entry. Do not use a high-value production credential in a shared browser profile. Prefer a short-lived, restricted key or the Android build.
 
@@ -20,7 +20,7 @@ The endpoint operator may log or retain requests according to its own policy. Or
 
 ## Local and intranet deployment
 
-An organization can configure an HTTPS intranet gateway or an OpenAI-compatible local deployment such as Ollama or vLLM. This can keep question content inside the organization's network boundary. Actual security depends on network segmentation, transport security, endpoint authentication, access control, logging, device management, and the model deployment itself.
+An organization can expose an OpenAI-compatible local deployment such as Ollama or vLLM through an HTTPS intranet gateway. Android and non-local web connections require HTTPS; plain HTTP is accepted only for loopback development addresses. This can keep question content inside the organization's network boundary. Actual security depends on network segmentation, transport security, endpoint authentication, access control, logging, device management, and the model deployment itself.
 
 ## Maintainer telemetry
 

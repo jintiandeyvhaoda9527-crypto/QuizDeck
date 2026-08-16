@@ -10,6 +10,7 @@ import {
 } from "../app/bank-management.ts";
 import { deleteImportedBank } from "../app/bank-storage.ts";
 import { BUILTIN_BANK_ID } from "../app/bank-types.ts";
+import { getLibraryErrorMessage } from "../app/i18n/library-messages.ts";
 import {
   createCustomPartition,
   deleteCustomPartition,
@@ -109,11 +110,27 @@ test("renames only imported banks and preserves progress-sensitive version", () 
 
   assert.throws(
     () => renameImportedBank({ ...original, builtIn: true }, "不能修改"),
-    /内置题库不能重命名/,
+    (error) => {
+      assert.equal(error.name, "BankManagementError");
+      assert.equal(error.code, "built-in-rename");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "The built-in question bank cannot be renamed.",
+      );
+      return true;
+    },
   );
   assert.throws(
     () => renameImportedBank(original, "   "),
-    /题库名称不能为空/,
+    (error) => {
+      assert.equal(error.name, "BankManagementError");
+      assert.equal(error.code, "empty-bank-name");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "The question-bank name cannot be empty.",
+      );
+      return true;
+    },
   );
 });
 
@@ -233,7 +250,15 @@ test("partition validation rejects empty or unrelated selections", () => {
         name: " ",
         questionIds: [source.questions[0].id],
       }),
-    /分区名称不能为空/,
+    (error) => {
+      assert.equal(error.name, "BankUserStateError");
+      assert.equal(error.code, "empty-partition-name");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "The partition name cannot be empty.",
+      );
+      return true;
+    },
   );
   assert.throws(
     () =>
@@ -242,7 +267,15 @@ test("partition validation rejects empty or unrelated selections", () => {
         name: "其他题库",
         questionIds: ["another-bank:q-1"],
       }),
-    /至少需要包含一道有效题目/,
+    (error) => {
+      assert.equal(error.name, "BankUserStateError");
+      assert.equal(error.code, "empty-partition-selection");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "A partition must contain at least one valid question.",
+      );
+      return true;
+    },
   );
   assert.throws(
     () =>
@@ -250,7 +283,15 @@ test("partition validation rejects empty or unrelated selections", () => {
         name: "不存在",
         questionIds: [source.questions[0].id],
       }),
-    /未找到要修改的分区/,
+    (error) => {
+      assert.equal(error.name, "BankUserStateError");
+      assert.equal(error.code, "partition-not-found");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "The partition to update was not found.",
+      );
+      return true;
+    },
   );
 });
 
@@ -269,7 +310,15 @@ test("removes only the selected bank user state", () => {
 test("refuses built-in deletion before opening IndexedDB", async () => {
   await assert.rejects(
     deleteImportedBank(BUILTIN_BANK_ID),
-    /内置题库不能删除/,
+    (error) => {
+      assert.equal(error.name, "BankStorageError");
+      assert.equal(error.code, "built-in-delete");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "The built-in question bank cannot be deleted.",
+      );
+      return true;
+    },
   );
 });
 

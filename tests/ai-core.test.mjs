@@ -526,6 +526,36 @@ test("核心错误可按 code 映射为中英安全消息且不回显原始正�
     false,
   );
   assert.equal(getCoreErrorMessage("en-US", new Error(rawSecret)), null);
+
+  const safeMessages = [
+    [
+      "payment-required",
+      402,
+      "AI 账户余额不足，请充值后重试。",
+      "The AI account has insufficient balance. Add funds and try again.",
+    ],
+    [
+      "invalid-parameters",
+      422,
+      "AI 服务无法处理当前参数，请检查模型名称和接口配置。",
+      "The AI service rejected the request parameters. Check the model name and endpoint configuration.",
+    ],
+    [
+      "service-unavailable",
+      503,
+      "AI 服务暂时不可用或繁忙，请稍后重试。",
+      "The AI service is temporarily unavailable or busy. Try again later.",
+    ],
+  ];
+  for (const [code, status, zhMessage, enMessage] of safeMessages) {
+    const typedError = new AiClientError(code, rawSecret, status);
+    assert.equal(getCoreErrorMessage("zh-CN", typedError), zhMessage);
+    assert.equal(getCoreErrorMessage("en-US", typedError), enMessage);
+    assert.equal(
+      getCoreErrorMessage("en-US", typedError)?.includes(rawSecret),
+      false,
+    );
+  }
 });
 
 test("DeepSeek 资源中断与常见 HTTP 状态给出可行动错误", async () => {
@@ -541,13 +571,14 @@ test("DeepSeek 资源中断与常见 HTTP 状态给出可行动错误", async ()
       }),
     (error) =>
       error instanceof AiClientError &&
-      error.code === "provider" &&
+      error.code === "service-unavailable" &&
       /繁忙/u.test(error.message),
   );
 
-  for (const [status, expected] of [
-    [402, /余额不足/u],
-    [422, /模型名称和接口配置/u],
+  for (const [status, code, expected] of [
+    [402, "payment-required", /余额不足/u],
+    [422, "invalid-parameters", /模型名称和接口配置/u],
+    [503, "service-unavailable", /不可用或繁忙/u],
   ]) {
     const client = createOpenAiCompatibleClient(
       {
@@ -565,7 +596,7 @@ test("DeepSeek 资源中断与常见 HTTP 状态给出可行动错误", async ()
       client.complete([{ role: "user", content: "测试" }]),
       (error) =>
         error instanceof AiClientError &&
-        error.code === "provider" &&
+        error.code === code &&
         expected.test(error.message),
     );
   }

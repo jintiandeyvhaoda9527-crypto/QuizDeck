@@ -8,6 +8,52 @@ export const libraryMessages = {
     "library.common.remove": "移除",
     "library.common.retry": "重试",
     "library.common.settings": "设置",
+    "library.error.questionBankImport.unsupported-file-type":
+      "仅支持 .xls 和 .xlsx 题库文件。",
+    "library.error.questionBankImport.empty-file": "所选文件为空。",
+    "library.error.questionBankImport.file-too-large":
+      "题库文件不能超过 {{maxMegabytes}} MB。",
+    "library.error.questionBankImport.signature-mismatch":
+      "文件内容与扩展名不一致，无法导入。",
+    "library.error.questionBankImport.unreadable-file":
+      "无法读取该 Excel 文件，文件可能已损坏或加密。",
+    "library.error.questionBankImport.too-many-sheets":
+      "题库文件最多支持 {{maxSheets}} 个工作表。",
+    "library.error.questionBankImport.cell-too-long":
+      "单元格内容超过 {{maxCharacters}} 个字符，已停止导入。",
+    "library.error.questionBankImport.too-many-rows":
+      "题库文件最多支持 {{maxRows}} 行。",
+    "library.error.questionBankImport.too-many-cells":
+      "题库文件最多支持 {{maxCells}} 个非空单元格。",
+    "library.error.questionBankImport.header-not-found":
+      "未找到可识别的题库表头。",
+    "library.error.questionBankImport.no-questions":
+      "题库表头已识别，但没有找到可导入的题目。",
+    "library.error.questionBankImport.too-many-questions":
+      "单个题库最多支持 {{maxQuestions}} 道题。",
+    "library.error.bankManagement.built-in-rename":
+      "内置题库不能重命名。",
+    "library.error.bankManagement.empty-bank-name": "题库名称不能为空。",
+    "library.error.bankStorage.storage-unavailable":
+      "当前环境不支持本地题库存储。",
+    "library.error.bankStorage.open-failed": "无法打开本地题库存储。",
+    "library.error.bankStorage.load-failed": "读取本地题库失败。",
+    "library.error.bankStorage.built-in-save":
+      "内置题库不能写入导入题库存储。",
+    "library.error.bankStorage.invalid-imported-bank": "导入题库数据无效。",
+    "library.error.bankStorage.save-failed": "保存题库失败。",
+    "library.error.bankStorage.empty-bank-id": "题库 ID 不能为空。",
+    "library.error.bankStorage.built-in-delete": "内置题库不能删除。",
+    "library.error.bankStorage.delete-failed": "删除题库失败。",
+    "library.error.bankUserState.empty-partition-name": "分区名称不能为空。",
+    "library.error.bankUserState.empty-partition-selection":
+      "分区至少需要包含一道有效题目。",
+    "library.error.bankUserState.empty-partition-id": "分区 ID 不能为空。",
+    "library.error.bankUserState.duplicate-partition-id": "分区 ID 已存在。",
+    "library.error.bankUserState.invalid-partition-created-at":
+      "分区创建时间无效。",
+    "library.error.bankUserState.partition-not-found":
+      "未找到要修改的分区。",
     "library.count.bank.one": "{{count}} 个",
     "library.count.bank.other": "{{count}} 个",
     "library.count.category.one": "{{count}} 个",
@@ -248,6 +294,64 @@ export const libraryMessages = {
     "library.common.remove": "Remove",
     "library.common.retry": "Retry",
     "library.common.settings": "Settings",
+    "library.error.questionBankImport.unsupported-file-type":
+      "Only .xls and .xlsx question-bank files are supported.",
+    "library.error.questionBankImport.empty-file":
+      "The selected file is empty.",
+    "library.error.questionBankImport.file-too-large":
+      "Question-bank files cannot exceed {{maxMegabytes}} MB.",
+    "library.error.questionBankImport.signature-mismatch":
+      "The file contents do not match its extension and cannot be imported.",
+    "library.error.questionBankImport.unreadable-file":
+      "Could not read this Excel file. It may be damaged or encrypted.",
+    "library.error.questionBankImport.too-many-sheets":
+      "A question-bank file can contain at most {{maxSheets}} worksheets.",
+    "library.error.questionBankImport.cell-too-long":
+      "A cell exceeds the {{maxCharacters}}-character import limit.",
+    "library.error.questionBankImport.too-many-rows":
+      "A question-bank file can contain at most {{maxRows}} rows.",
+    "library.error.questionBankImport.too-many-cells":
+      "A question-bank file can contain at most {{maxCells}} non-empty cells.",
+    "library.error.questionBankImport.header-not-found":
+      "No recognizable question-bank header was found.",
+    "library.error.questionBankImport.no-questions":
+      "The question-bank header was recognized, but no importable questions were found.",
+    "library.error.questionBankImport.too-many-questions":
+      "A question bank can contain at most {{maxQuestions}} questions.",
+    "library.error.bankManagement.built-in-rename":
+      "The built-in question bank cannot be renamed.",
+    "library.error.bankManagement.empty-bank-name":
+      "The question-bank name cannot be empty.",
+    "library.error.bankStorage.storage-unavailable":
+      "Local question-bank storage is unavailable in this environment.",
+    "library.error.bankStorage.open-failed":
+      "Could not open local question-bank storage.",
+    "library.error.bankStorage.load-failed":
+      "Could not load local question banks.",
+    "library.error.bankStorage.built-in-save":
+      "The built-in question bank cannot be saved as an imported bank.",
+    "library.error.bankStorage.invalid-imported-bank":
+      "The imported question-bank data is invalid.",
+    "library.error.bankStorage.save-failed":
+      "Could not save the question bank.",
+    "library.error.bankStorage.empty-bank-id":
+      "The question-bank ID cannot be empty.",
+    "library.error.bankStorage.built-in-delete":
+      "The built-in question bank cannot be deleted.",
+    "library.error.bankStorage.delete-failed":
+      "Could not delete the question bank.",
+    "library.error.bankUserState.empty-partition-name":
+      "The partition name cannot be empty.",
+    "library.error.bankUserState.empty-partition-selection":
+      "A partition must contain at least one valid question.",
+    "library.error.bankUserState.empty-partition-id":
+      "The partition ID cannot be empty.",
+    "library.error.bankUserState.duplicate-partition-id":
+      "The partition ID already exists.",
+    "library.error.bankUserState.invalid-partition-created-at":
+      "The partition creation time is invalid.",
+    "library.error.bankUserState.partition-not-found":
+      "The partition to update was not found.",
     "library.count.bank.one": "{{count}} bank",
     "library.count.bank.other": "{{count}} banks",
     "library.count.category.one": "{{count}} category",
@@ -480,3 +584,108 @@ export const libraryMessages = {
     "library.aiReview.savePartition": "Save partition",
   },
 } as const;
+
+export type LibraryMessageKey = keyof typeof libraryMessages["zh-CN"];
+
+const libraryErrorMessageKeys = {
+  QuestionBankImportError: {
+    "unsupported-file-type":
+      "library.error.questionBankImport.unsupported-file-type",
+    "empty-file": "library.error.questionBankImport.empty-file",
+    "file-too-large": "library.error.questionBankImport.file-too-large",
+    "signature-mismatch":
+      "library.error.questionBankImport.signature-mismatch",
+    "unreadable-file": "library.error.questionBankImport.unreadable-file",
+    "too-many-sheets": "library.error.questionBankImport.too-many-sheets",
+    "cell-too-long": "library.error.questionBankImport.cell-too-long",
+    "too-many-rows": "library.error.questionBankImport.too-many-rows",
+    "too-many-cells": "library.error.questionBankImport.too-many-cells",
+    "header-not-found": "library.error.questionBankImport.header-not-found",
+    "no-questions": "library.error.questionBankImport.no-questions",
+    "too-many-questions":
+      "library.error.questionBankImport.too-many-questions",
+  },
+  BankManagementError: {
+    "built-in-rename": "library.error.bankManagement.built-in-rename",
+    "empty-bank-name": "library.error.bankManagement.empty-bank-name",
+  },
+  BankStorageError: {
+    "storage-unavailable": "library.error.bankStorage.storage-unavailable",
+    "open-failed": "library.error.bankStorage.open-failed",
+    "load-failed": "library.error.bankStorage.load-failed",
+    "built-in-save": "library.error.bankStorage.built-in-save",
+    "invalid-imported-bank":
+      "library.error.bankStorage.invalid-imported-bank",
+    "save-failed": "library.error.bankStorage.save-failed",
+    "empty-bank-id": "library.error.bankStorage.empty-bank-id",
+    "built-in-delete": "library.error.bankStorage.built-in-delete",
+    "delete-failed": "library.error.bankStorage.delete-failed",
+  },
+  BankUserStateError: {
+    "empty-partition-name":
+      "library.error.bankUserState.empty-partition-name",
+    "empty-partition-selection":
+      "library.error.bankUserState.empty-partition-selection",
+    "empty-partition-id": "library.error.bankUserState.empty-partition-id",
+    "duplicate-partition-id":
+      "library.error.bankUserState.duplicate-partition-id",
+    "invalid-partition-created-at":
+      "library.error.bankUserState.invalid-partition-created-at",
+    "partition-not-found": "library.error.bankUserState.partition-not-found",
+  },
+} as const satisfies Readonly<
+  Record<string, Readonly<Record<string, LibraryMessageKey>>>
+>;
+
+interface LibraryErrorLike {
+  name?: unknown;
+  code?: unknown;
+  params?: unknown;
+}
+
+/**
+ * Maps a typed question-bank error to localized UI text. Error.message and
+ * unknown properties are deliberately ignored so raw storage diagnostics are
+ * never reflected into the interface.
+ */
+export function getLibraryErrorMessage(
+  locale: keyof typeof libraryMessages,
+  error: unknown,
+): string | null {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const candidate = error as LibraryErrorLike;
+  if (typeof candidate.name !== "string" || typeof candidate.code !== "string") {
+    return null;
+  }
+
+  const family = libraryErrorMessageKeys[
+    candidate.name as keyof typeof libraryErrorMessageKeys
+  ];
+  if (!family) {
+    return null;
+  }
+
+  const key = (family as Readonly<Record<string, LibraryMessageKey>>)[
+    candidate.code
+  ];
+  if (!key) {
+    return null;
+  }
+
+  const params =
+    candidate.params && typeof candidate.params === "object"
+      ? (candidate.params as Readonly<Record<string, unknown>>)
+      : {};
+  return libraryMessages[locale][key].replace(
+    /\{\{([A-Za-z0-9_]+)\}\}/gu,
+    (placeholder, name: string) => {
+      const value = params[name];
+      return typeof value === "string" || typeof value === "number"
+        ? String(value)
+        : placeholder;
+    },
+  );
+}

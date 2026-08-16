@@ -2,7 +2,26 @@
 
 All notable changes are documented here. This project follows Semantic Versioning while it is practical for the pre-1.0 API.
 
-## Unreleased
+## 0.2.1 - 2026-08-16
+
+### Added
+
+- App-icon branding in both README files and a repository social-preview image.
+- Regression checks for Android backup policy, signing/service-file ignores, and loopback metadata URLs.
+
+### Fixed
+
+- GitHub Actions dependency installation under pnpm 11 by replacing the removed build-script allowlist format with exact-version approvals.
+- HTTP 402, 422, 5xx, and DeepSeek resource-exhaustion errors now produce distinct, localized, actionable messages without exposing provider response bodies.
+- Local development on `127.0.0.1` no longer emits broken HTTPS icon and manifest URLs.
+- User-facing import and local-bank errors now follow the selected Chinese or English interface language.
+
+### Security
+
+- Android cloud backup and device-transfer rules now exclude all application data domains, with application backup disabled.
+- Common signing and service configuration files are ignored, and the unused Google Services build plugin has been removed.
+- GitHub Actions checkout no longer persists repository credentials into job worktrees.
+- Security documentation now accurately describes session-only API-key storage in the web preview and the HTTPS requirement for non-loopback model endpoints.
 
 ## 0.2.0 - 2026-08-16
 

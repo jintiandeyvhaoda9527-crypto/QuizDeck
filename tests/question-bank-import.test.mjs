@@ -3,6 +3,7 @@ import test from "node:test";
 
 import * as XLSX from "xlsx";
 
+import { getLibraryErrorMessage } from "../app/i18n/library-messages.ts";
 import { parseQuestionBankFile } from "../app/question-bank-import.ts";
 
 function workbookFile(name, sheets, bookType = "xlsx") {
@@ -445,7 +446,19 @@ test("rejects unsupported files and workbooks without a recognizable header", as
   const textFile = new File(["not an excel workbook"], "题库.csv");
   await assert.rejects(
     parseQuestionBankFile(textFile),
-    /仅支持 \.xls 和 \.xlsx/,
+    (error) => {
+      assert.equal(error.name, "QuestionBankImportError");
+      assert.equal(error.code, "unsupported-file-type");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "Only .xls and .xlsx question-bank files are supported.",
+      );
+      assert.equal(
+        getLibraryErrorMessage("zh-CN", error),
+        "仅支持 .xls 和 .xlsx 题库文件。",
+      );
+      return true;
+    },
   );
 
   const workbook = workbookFile("无表头.xlsx", [
@@ -453,6 +466,14 @@ test("rejects unsupported files and workbooks without a recognizable header", as
   ]);
   await assert.rejects(
     parseQuestionBankFile(workbook),
-    /未找到可识别的题库表头/,
+    (error) => {
+      assert.equal(error.name, "QuestionBankImportError");
+      assert.equal(error.code, "header-not-found");
+      assert.equal(
+        getLibraryErrorMessage("en-US", error),
+        "No recognizable question-bank header was found.",
+      );
+      return true;
+    },
   );
 });

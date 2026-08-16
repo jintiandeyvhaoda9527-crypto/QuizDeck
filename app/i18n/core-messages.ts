@@ -9,10 +9,16 @@ export const coreMessages = {
     "core.error.aiClient.network": "无法连接 AI 服务，请检查地址和网络。",
     "core.error.aiClient.authentication":
       "API Key 无效，或无权访问所选模型。",
+    "core.error.aiClient.payment-required":
+      "AI 账户余额不足，请充值后重试。",
     "core.error.aiClient.not-found":
       "AI 接口或模型不存在，请检查配置。",
     "core.error.aiClient.rate-limited":
       "AI 服务请求过于频繁，请稍后重试。",
+    "core.error.aiClient.invalid-parameters":
+      "AI 服务无法处理当前参数，请检查模型名称和接口配置。",
+    "core.error.aiClient.service-unavailable":
+      "AI 服务暂时不可用或繁忙，请稍后重试。",
     "core.error.aiClient.provider": "AI 服务暂时无法完成请求。",
     "core.error.aiClient.output-limit":
       "模型未能在输出限制内返回完整结果。",
@@ -57,10 +63,16 @@ export const coreMessages = {
       "Could not connect to the AI service. Check the endpoint and network.",
     "core.error.aiClient.authentication":
       "The API key is invalid or cannot access the selected model.",
+    "core.error.aiClient.payment-required":
+      "The AI account has insufficient balance. Add funds and try again.",
     "core.error.aiClient.not-found":
       "The AI endpoint or model was not found. Check the configuration.",
     "core.error.aiClient.rate-limited":
       "The AI service is receiving too many requests. Try again later.",
+    "core.error.aiClient.invalid-parameters":
+      "The AI service rejected the request parameters. Check the model name and endpoint configuration.",
+    "core.error.aiClient.service-unavailable":
+      "The AI service is temporarily unavailable or busy. Try again later.",
     "core.error.aiClient.provider":
       "The AI service could not complete the request.",
     "core.error.aiClient.output-limit":
@@ -107,8 +119,11 @@ const coreErrorMessageKeys = {
     timeout: "core.error.aiClient.timeout",
     network: "core.error.aiClient.network",
     authentication: "core.error.aiClient.authentication",
+    "payment-required": "core.error.aiClient.payment-required",
     "not-found": "core.error.aiClient.not-found",
     "rate-limited": "core.error.aiClient.rate-limited",
+    "invalid-parameters": "core.error.aiClient.invalid-parameters",
+    "service-unavailable": "core.error.aiClient.service-unavailable",
     provider: "core.error.aiClient.provider",
     "output-limit": "core.error.aiClient.output-limit",
     "no-visible-output": "core.error.aiClient.no-visible-output",

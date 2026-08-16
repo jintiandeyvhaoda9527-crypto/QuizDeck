@@ -33,6 +33,31 @@ const MAX_NON_EMPTY_CELLS = 100_000;
 const MAX_QUESTIONS = 5_000;
 const MAX_CELL_TEXT_LENGTH = 8_000;
 
+export type QuestionBankImportErrorCode =
+  | "unsupported-file-type"
+  | "empty-file"
+  | "file-too-large"
+  | "signature-mismatch"
+  | "unreadable-file"
+  | "too-many-sheets"
+  | "cell-too-long"
+  | "too-many-rows"
+  | "too-many-cells"
+  | "header-not-found"
+  | "no-questions"
+  | "too-many-questions";
+
+export class QuestionBankImportError extends Error {
+  override readonly name = "QuestionBankImportError";
+
+  constructor(
+    readonly code: QuestionBankImportErrorCode,
+    readonly params: Readonly<Record<string, string | number>> = {},
+  ) {
+    super(code);
+  }
+}
+
 const NUMBER_HEADERS = new Set([
   "序号",
   "题号",
@@ -430,17 +455,23 @@ function assertWorkbookLimits(scans: readonly SheetScan[]) {
         }
         nonEmptyCells += 1;
         if (text.length > MAX_CELL_TEXT_LENGTH) {
-          throw new Error("文件中存在过长的单元格内容，已停止导入。");
+          throw new QuestionBankImportError("cell-too-long", {
+            maxCharacters: MAX_CELL_TEXT_LENGTH,
+          });
         }
       }
     }
   }
 
   if (totalRows > MAX_TOTAL_ROWS) {
-    throw new Error(`题库文件最多支持 ${MAX_TOTAL_ROWS} 行。`);
+    throw new QuestionBankImportError("too-many-rows", {
+      maxRows: MAX_TOTAL_ROWS,
+    });
   }
   if (nonEmptyCells > MAX_NON_EMPTY_CELLS) {
-    throw new Error("题库文件内容过多，已停止导入。");
+    throw new QuestionBankImportError("too-many-cells", {
+      maxCells: MAX_NON_EMPTY_CELLS,
+    });
   }
 }
 
@@ -745,16 +776,23 @@ export async function parseQuestionBankFile(
 ): Promise<ImportedBankDraft> {
   const extensionMatch = /\.(xlsx|xls)$/i.exec(file.name);
   if (!extensionMatch) {
-    throw new Error("仅支持 .xls 和 .xlsx 题库文件。");
+    throw new QuestionBankImportError("unsupported-file-type");
   }
   if (file.size <= 0) {
-    throw new Error("所选文件为空。");
+    throw new QuestionBankImportError("empty-file");
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error("题库文件不能超过 10 MB。");
+    throw new QuestionBankImportError("file-too-large", {
+      maxMegabytes: MAX_FILE_BYTES / 1024 / 1024,
+    });
   }
 
-  const data = await file.arrayBuffer();
+  let data: ArrayBuffer;
+  try {
+    data = await file.arrayBuffer();
+  } catch {
+    throw new QuestionBankImportError("unreadable-file");
+  }
   const extension = extensionMatch[1].toLocaleLowerCase("en") as
     | "xls"
     | "xlsx";
@@ -764,7 +802,7 @@ export async function parseQuestionBankFile(
       extension,
     )
   ) {
-    throw new Error("文件内容与扩展名不一致，无法导入。");
+    throw new QuestionBankImportError("signature-mismatch");
   }
 
   let workbook: XLSX.WorkBook;
@@ -776,10 +814,12 @@ export async function parseQuestionBankFile(
       sheetRows: MAX_TOTAL_ROWS + 1,
     });
   } catch {
-    throw new Error("无法读取该 Excel 文件，文件可能已损坏或加密。");
+    throw new QuestionBankImportError("unreadable-file");
   }
   if (workbook.SheetNames.length > MAX_SHEETS) {
-    throw new Error(`题库文件最多支持 ${MAX_SHEETS} 个工作表。`);
+    throw new QuestionBankImportError("too-many-sheets", {
+      maxSheets: MAX_SHEETS,
+    });
   }
 
   const scans = workbook.SheetNames.map((sheetName, sheetIndex) =>
@@ -791,7 +831,7 @@ export async function parseQuestionBankFile(
   );
 
   if (usableScans.length === 0) {
-    throw new Error("未找到可识别的题库表头。");
+    throw new QuestionBankImportError("header-not-found");
   }
 
   const questions: Question[] = [];
@@ -830,10 +870,12 @@ export async function parseQuestionBankFile(
   }
 
   if (questions.length === 0) {
-    throw new Error("题库表头已识别，但没有找到可导入的题目。");
+    throw new QuestionBankImportError("no-questions");
   }
   if (questions.length > MAX_QUESTIONS) {
-    throw new Error(`单个题库最多支持 ${MAX_QUESTIONS} 道题。`);
+    throw new QuestionBankImportError("too-many-questions", {
+      maxQuestions: MAX_QUESTIONS,
+    });
   }
 
   return {

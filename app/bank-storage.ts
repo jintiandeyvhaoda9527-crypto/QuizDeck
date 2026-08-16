@@ -9,19 +9,44 @@ const DATABASE_NAME = "quizdeck-offline-banks";
 const DATABASE_VERSION = 1;
 const BANK_STORE = "banks";
 
+export type BankStorageErrorCode =
+  | "storage-unavailable"
+  | "open-failed"
+  | "load-failed"
+  | "built-in-save"
+  | "invalid-imported-bank"
+  | "save-failed"
+  | "empty-bank-id"
+  | "built-in-delete"
+  | "delete-failed";
+
+export class BankStorageError extends Error {
+  override readonly name = "BankStorageError";
+
+  constructor(readonly code: BankStorageErrorCode) {
+    super(code);
+  }
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     if (!globalThis.indexedDB) {
-      reject(new Error("当前环境不支持本地题库存储"));
+      reject(new BankStorageError("storage-unavailable"));
       return;
     }
 
-    const request = globalThis.indexedDB.open(
-      DATABASE_NAME,
-      DATABASE_VERSION,
-    );
+    let request: IDBOpenDBRequest;
+    try {
+      request = globalThis.indexedDB.open(
+        DATABASE_NAME,
+        DATABASE_VERSION,
+      );
+    } catch {
+      reject(new BankStorageError("open-failed"));
+      return;
+    }
     request.onerror = () => {
-      reject(request.error ?? new Error("无法打开本地题库存储"));
+      reject(new BankStorageError("open-failed"));
     };
     request.onupgradeneeded = () => {
       const database = request.result;
@@ -197,20 +222,24 @@ export async function loadImportedBanks() {
 
   try {
     return await new Promise<QuizBank[]>((resolve, reject) => {
-      const transaction = database.transaction(BANK_STORE, "readonly");
-      const request = transaction.objectStore(BANK_STORE).getAll();
-      request.onerror = () => {
-        reject(request.error ?? new Error("读取本地题库失败"));
-      };
-      request.onsuccess = () => {
-        resolve(
-          (request.result as unknown[])
-            .filter(isValidImportedBank)
-            .sort((left, right) =>
-              (left.importedAt ?? "").localeCompare(right.importedAt ?? ""),
-            ),
-        );
-      };
+      try {
+        const transaction = database.transaction(BANK_STORE, "readonly");
+        const request = transaction.objectStore(BANK_STORE).getAll();
+        request.onerror = () => {
+          reject(new BankStorageError("load-failed"));
+        };
+        request.onsuccess = () => {
+          resolve(
+            (request.result as unknown[])
+              .filter(isValidImportedBank)
+              .sort((left, right) =>
+                (left.importedAt ?? "").localeCompare(right.importedAt ?? ""),
+              ),
+          );
+        };
+      } catch {
+        reject(new BankStorageError("load-failed"));
+      }
     });
   } finally {
     database.close();
@@ -221,10 +250,8 @@ export async function saveImportedBank(bank: QuizBank) {
   const isBuiltInBank =
     bank.id === BUILTIN_BANK_ID || bank.builtIn;
   if (!isValidImportedBank(bank)) {
-    throw new Error(
-      isBuiltInBank
-        ? "内置题库不能写入导入题库存储"
-        : "导入题库数据无效",
+    throw new BankStorageError(
+      isBuiltInBank ? "built-in-save" : "invalid-imported-bank",
     );
   }
 
@@ -232,12 +259,16 @@ export async function saveImportedBank(bank: QuizBank) {
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(BANK_STORE, "readwrite");
-      transaction.onerror = () => {
-        reject(transaction.error ?? new Error("保存题库失败"));
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.objectStore(BANK_STORE).put(bank);
+      try {
+        const transaction = database.transaction(BANK_STORE, "readwrite");
+        transaction.onerror = () => {
+          reject(new BankStorageError("save-failed"));
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.objectStore(BANK_STORE).put(bank);
+      } catch {
+        reject(new BankStorageError("save-failed"));
+      }
     });
   } finally {
     database.close();
@@ -247,22 +278,26 @@ export async function saveImportedBank(bank: QuizBank) {
 export async function deleteImportedBank(bankId: string) {
   const normalizedBankId = bankId.trim();
   if (!normalizedBankId) {
-    throw new Error("题库 ID 不能为空");
+    throw new BankStorageError("empty-bank-id");
   }
   if (normalizedBankId === BUILTIN_BANK_ID) {
-    throw new Error("内置题库不能删除");
+    throw new BankStorageError("built-in-delete");
   }
 
   const database = await openDatabase();
 
   try {
     await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(BANK_STORE, "readwrite");
-      transaction.onerror = () => {
-        reject(transaction.error ?? new Error("删除题库失败"));
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.objectStore(BANK_STORE).delete(normalizedBankId);
+      try {
+        const transaction = database.transaction(BANK_STORE, "readwrite");
+        transaction.onerror = () => {
+          reject(new BankStorageError("delete-failed"));
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.objectStore(BANK_STORE).delete(normalizedBankId);
+      } catch {
+        reject(new BankStorageError("delete-failed"));
+      }
     });
   } finally {
     database.close();

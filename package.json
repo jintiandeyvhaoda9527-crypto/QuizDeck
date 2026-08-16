@@ -1,6 +1,6 @@
 {
   "name": "quizdeck",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Offline-first quiz practice with reviewed AI-assisted question classification.",
   "license": "MIT",

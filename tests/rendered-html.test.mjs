@@ -4,14 +4,17 @@ import test from "node:test";
 
 const projectRoot = new URL("../", import.meta.url);
 
-async function render(pathname = "/") {
+async function render(pathname = "/", origin = "http://localhost") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: handler } = await import(workerUrl.href);
 
   return handler(
-    new Request(`http://localhost${pathname}`, {
-      headers: { accept: "text/html" },
+    new Request(`${origin}${pathname}`, {
+      headers: {
+        accept: "text/html",
+        host: new URL(origin).host,
+      },
     }),
     {
       waitUntil() {},
@@ -36,6 +39,15 @@ test("server-renders the QuizDeck home screen", async () => {
   assert.match(html, /rel="manifest"/i);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Building your site/i);
   assert.doesNotMatch(html, /react-loading-skeleton/);
+});
+
+test("keeps loopback metadata assets on HTTP during local development", async () => {
+  const response = await render("/", "http://127.0.0.1:3000");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /http:\/\/127\.0\.0\.1:3000\/icons\/icon-192\.png/);
+  assert.doesNotMatch(html, /https:\/\/127\.0\.0\.1:3000/);
 });
 
 test("ships the original neutral demo bank and required offline assets", async () => {

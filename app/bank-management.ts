@@ -11,6 +11,18 @@ export interface ImportIssueDetail extends ImportIssue {
   questionStem?: string;
 }
 
+export type BankManagementErrorCode =
+  | "built-in-rename"
+  | "empty-bank-name";
+
+export class BankManagementError extends Error {
+  override readonly name = "BankManagementError";
+
+  constructor(readonly code: BankManagementErrorCode) {
+    super(code);
+  }
+}
+
 function canonicalBankContent(source: BankContent) {
   const questionIndexes = new Map(
     source.questions.map((question, index) => [question.id, index]),
@@ -83,12 +95,12 @@ export function renameImportedBank(
   requestedName: string,
 ): QuizBank {
   if (bank.builtIn || bank.id === BUILTIN_BANK_ID) {
-    throw new Error("内置题库不能重命名");
+    throw new BankManagementError("built-in-rename");
   }
 
   const name = requestedName.trim();
   if (!name) {
-    throw new Error("题库名称不能为空");
+    throw new BankManagementError("empty-bank-name");
   }
 
   if (name === bank.name) {

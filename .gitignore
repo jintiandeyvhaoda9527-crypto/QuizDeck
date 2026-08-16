@@ -23,6 +23,10 @@
 *.pem
 *.jks
 *.keystore
+*.p12
+*.pfx
+key.properties
+google-services.json
 local.properties
 
 # debug
@@ -44,6 +48,7 @@ next-env.d.ts
 /dist/
 /.wrangler/
 /outputs/
+/output/
 /work/
 /.pnpm-store/
 /.android-sdk/

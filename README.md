@@ -1,5 +1,11 @@
 # QuizDeck
 
+<p align="center">
+  <img src="public/icons/icon-512.png" alt="QuizDeck app icon" width="144" height="144" />
+</p>
+
+<p align="center"><strong>AI-assisted, privacy-first employee training and certification.</strong></p>
+
 [简体中文](README.zh-CN.md)
 
 QuizDeck is an AI-assisted, privacy-first employee training and certification platform for enterprise question banks. It imports Excel question banks, runs offline practice and randomized mock exams, provides instant feedback and mistake review, and turns natural-language training goals into reviewable question partitions.
@@ -12,7 +18,7 @@ The current project is a lightweight Android and web client. It is designed for 
 - **Two-stage AI classification:** QuizDeck first summarizes the user's intent, waits for confirmation, then classifies the active bank in bounded batches.
 - **Human-controlled results:** AI output is a candidate. Users can review membership, edit the partition name, add or remove questions, or discard the result before saving.
 - **Strict boundaries:** batch results are schema-checked, deduplicated, restricted to IDs in the active bank, and restored to source order.
-- **Enterprise deployment choices:** users can configure a compatible cloud endpoint, an HTTPS intranet gateway, or a local OpenAI-compatible service such as Ollama or vLLM.
+- **Enterprise deployment choices:** users can configure a compatible cloud endpoint or expose Ollama, vLLM, and other OpenAI-compatible services through an HTTPS intranet gateway.
 - **Local data ownership:** question banks, answers, progress, mistakes, and saved partitions remain on the device by default.
 
 ## Current capabilities
@@ -33,7 +39,7 @@ Semantic duplicate detection and AI-generated adaptive review recommendations ar
 
 AI is opt-in. QuizDeck sends question content only after the user starts an AI classification workflow and confirms the interpreted goal. The active bank is then sent in controlled batches to the endpoint selected by the user. Ordinary import, practice, exams, scoring, and history do not call an AI endpoint.
 
-Using a local or intranet model can keep question-bank content and learning data inside an organization's network boundary. Actual security still depends on network design, access control, endpoint configuration, device policy, and the selected model deployment.
+Using a local or intranet model can keep question-bank content and learning data inside an organization's network boundary. Android and non-local web connections require HTTPS; plain HTTP is accepted only for loopback development addresses. Actual security still depends on network design, access control, endpoint configuration, device policy, and the selected model deployment.
 
 On Android, the API key is encrypted with an Android Keystore-backed AES-GCM key. The web preview keeps its API key only in session storage and is still less suitable for sensitive credentials; see [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md).
 

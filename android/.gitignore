@@ -55,6 +55,9 @@ captures/
 # Keystore files
 *.jks
 *.keystore
+*.p12
+*.pfx
+key.properties
 signing.properties
 
 # External native build folder generated in Android Studio 2.2 and later
@@ -62,7 +65,7 @@ signing.properties
 .cxx/
 
 # Google Services (e.g. APIs or Firebase)
-# google-services.json
+google-services.json
 
 # Freeline
 freeline.py
